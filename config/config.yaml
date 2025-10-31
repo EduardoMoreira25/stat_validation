@@ -6,6 +6,7 @@ thresholds:
   ks_test_pvalue: 0.05              # 95% confidence level for KS-test
   psi_threshold: 0.1                # PSI < 0.1 = no change, 0.1-0.25 = moderate, >0.25 = significant
   null_rate_tolerance_pct: 2.0      # 2% tolerance for null rate differences
+  null_rate_use_full_table: true    # NEW: Use full table for null rate tests (bypasses sampling)
   chi_square_pvalue: 0.05           # Chi-square test threshold
   t_test_pvalue: 0.05               # T-test threshold
 

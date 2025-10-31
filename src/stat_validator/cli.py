@@ -7,6 +7,7 @@ from typing import Optional, List
 from .utils.config_loader import ConfigLoader
 from .utils.logger import setup_logging, get_logger
 from .connectors.dremio_connector import DremioConnector
+from .connectors.hana_connector import HanaConnector
 from .comparison.comparator import TableComparator
 from .reporting.report_generator import ReportGenerator
 from .reporting.alerting import AlertManager
@@ -42,11 +43,11 @@ def compare(
     verbose: bool
 ):
     """
-    Compare two tables using statistical validation.
+    Compare two tables using statistical validation (same data source).
     
     Examples:
     
-        # Basic comparison
+        # Basic comparison (Dremio to Dremio)
         stat-validator compare schema.source_table schema.dest_table
         
         # With specific columns
@@ -69,17 +70,17 @@ def compare(
         config_loader = ConfigLoader(config_path=config, env_path=env)
         app_config = config_loader.get_all()
         
-        # Connect to Dremio
+        # Connect to Dremio (default)
         click.echo("Connecting to Dremio...")
         dremio_config = config_loader.get_dremio_config()
         connector = DremioConnector(**dremio_config)
         
-        # Run comparison
+        # Run comparison (same connector for both source and dest)
         click.echo(f"\nComparing tables:")
         click.echo(f"  Source: {source_table}")
         click.echo(f"  Destination: {dest_table}")
         
-        comparator = TableComparator(connector, app_config)
+        comparator = TableComparator(connector, connector, app_config)
         
         columns_list = list(columns) if columns else None
         result = comparator.compare(source_table, dest_table, columns_list)
@@ -119,25 +120,127 @@ def compare(
         sys.exit(1)
 
 
+@cli.command('compare-cross')
+@click.argument('hana_table')
+@click.argument('dremio_table')
+@click.option('--config', '-c', help='Path to config YAML file')
+@click.option('--env', '-e', help='Path to .env file')
+@click.option('--columns', '-col', multiple=True, help='Specific columns to test')
+@click.option('--output-dir', '-o', default='./reports', help='Output directory for reports')
+@click.option('--formats', '-f', multiple=True, default=['json', 'html'], 
+              help='Report formats (json, html, csv)')
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+def compare_cross(
+    hana_table: str,
+    dremio_table: str,
+    config: Optional[str],
+    env: Optional[str],
+    columns: tuple,
+    output_dir: str,
+    formats: tuple,
+    verbose: bool
+):
+    """
+    Compare HANA (source) to Dremio (destination).
+    
+    Examples:
+        stat-validator compare-cross '"SAP_RISE_1"."T_RISE_DFKKOP"' 'ulysses1.sapisu."rfn_dfkkop"' -v
+    """
+    try:
+        # Setup logging
+        log_level = 'DEBUG' if verbose else 'INFO'
+        logger = setup_logging()
+        logger.setLevel(log_level)
+        
+        click.echo(f"\n🔍 Statistical Validation Tool - Cross-Source Comparison")
+        click.echo(f"{'='*60}\n")
+        
+        # Load configuration
+        click.echo("Loading configuration...")
+        config_loader = ConfigLoader(config_path=config, env_path=env)
+        app_config = config_loader.get_all()
+        
+        # Connect to SAP HANA (SOURCE)
+        click.echo("Connecting to SAP HANA (source)...")
+        hana_config = config_loader.get_hana_config()
+        source_connector = HanaConnector(**hana_config)
+        
+        # Connect to Dremio (DESTINATION)
+        click.echo("Connecting to Dremio (destination)...")
+        dremio_config = config_loader.get_dremio_config()
+        dest_connector = DremioConnector(**dremio_config)
+        
+        # Run cross-source comparison
+        click.echo(f"\nComparing tables (Cross-Source):")
+        click.echo(f"  Source (HANA): {hana_table}")
+        click.echo(f"  Destination (Dremio): {dremio_table}")
+        
+        comparator = TableComparator(source_connector, dest_connector, app_config)
+        
+        columns_list = list(columns) if columns else None
+        result = comparator.compare(hana_table, dremio_table, columns_list)
+        
+        # Generate reports
+        click.echo(f"\nGenerating reports...")
+        report_gen = ReportGenerator(output_dir)
+        report_files = report_gen.generate_report(result, formats=list(formats))
+        
+        click.echo(f"\n✅ Reports generated:")
+        for fmt, path in report_files.items():
+            click.echo(f"  {fmt.upper()}: {path}")
+        
+        # Send alerts if configured
+        alerting_config = app_config.get('alerting', {})
+        if alerting_config.get('enabled', False):
+            click.echo(f"\nSending alerts...")
+            alert_manager = AlertManager(alerting_config)
+            alert_manager.send_alert(result, report_files)
+        
+        # Exit with appropriate code
+        if result['overall_status'] == 'FAIL':
+            click.echo(f"\n❌ Validation FAILED")
+            sys.exit(1)
+        elif result['overall_status'] == 'WARNING':
+            click.echo(f"\n⚠️  Validation completed with WARNINGS")
+            sys.exit(0)
+        else:
+            click.echo(f"\n✅ Validation PASSED")
+            sys.exit(0)
+    
+    except Exception as e:
+        click.echo(f"\n❌ Error: {str(e)}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
 @cli.command()
 @click.argument('table_name')
 @click.option('--env', '-e', help='Path to .env file')
-def inspect(table_name: str, env: Optional[str]):
+@click.option('--source', '-s', type=click.Choice(['dremio', 'hana']), default='dremio',
+              help='Data source type (default: dremio)')
+def inspect(table_name: str, env: Optional[str], source: str):
     """
     Inspect a table's schema and basic statistics.
     
     Example:
         stat-validator inspect schema.table_name
+        stat-validator inspect '"SCHEMA"."TABLE"' --source hana
     """
     try:
         click.echo(f"\n🔍 Inspecting table: {table_name}\n")
         
         # Load config
         config_loader = ConfigLoader(env_path=env)
-        dremio_config = config_loader.get_dremio_config()
         
-        # Connect
-        connector = DremioConnector(**dremio_config)
+        # Connect based on source type
+        if source == 'hana':
+            hana_config = config_loader.get_hana_config()
+            connector = HanaConnector(**hana_config)
+        else:
+            dremio_config = config_loader.get_dremio_config()
+            connector = DremioConnector(**dremio_config)
         
         # Get schema
         schema = connector.get_table_schema(table_name)
@@ -180,10 +283,17 @@ DREMIO_PORT=32010
 DREMIO_USERNAME=your_username
 DREMIO_PASSWORD=your_password
 DREMIO_PAT=your_personal_access_token_here
-
-# Connection Options
 DREMIO_TLS=true
 DREMIO_DISABLE_SERVER_VERIFICATION=true
+
+# SAP HANA Connection Settings
+HANA_HOST=your-hana-hostname.com
+HANA_PORT=30015
+HANA_USER=your_username
+HANA_PASSWORD=your_password
+HANA_SCHEMA=your_default_schema
+HANA_ENCRYPT=true
+HANA_SSL_VALIDATE=false
 
 # DuckDB Cache
 DUCKDB_CACHE_PATH=_validation_cache.duckdb
@@ -207,7 +317,7 @@ LOG_LEVEL=INFO
         click.echo("\n📝 Next steps:")
         click.echo("  1. Copy .env.example to .env and fill in your credentials")
         click.echo("  2. Review config/config.yaml for threshold settings")
-        click.echo("  3. Run: stat-validator compare <source_table> <dest_table>")
+        click.echo("  3. Run: stat-validator compare-cross <hana_table> <dremio_table>")
         click.echo()
     
     except Exception as e:
@@ -216,29 +326,45 @@ LOG_LEVEL=INFO
 
 
 @cli.command()
-def test_connection():
-    """Test connection to Dremio."""
+@click.option('--source', '-s', type=click.Choice(['dremio', 'hana', 'both']), default='both',
+              help='Which connection to test (default: both)')
+def test_connection(source: str):
+    """Test connection to data sources."""
     try:
-        click.echo("\n🔌 Testing Dremio connection...\n")
-        
         config_loader = ConfigLoader()
-        dremio_config = config_loader.get_dremio_config()
         
-        click.echo(f"Hostname: {dremio_config['hostname']}")
-        click.echo(f"Port: {dremio_config['flightport']}")
-        click.echo(f"TLS: {dremio_config['tls']}")
+        if source in ['dremio', 'both']:
+            click.echo("\n🔌 Testing Dremio connection...\n")
+            dremio_config = config_loader.get_dremio_config()
+            click.echo(f"Hostname: {dremio_config['hostname']}")
+            click.echo(f"Port: {dremio_config['flightport']}")
+            click.echo(f"TLS: {dremio_config['tls']}")
+            
+            try:
+                connector = DremioConnector(**dremio_config)
+                result = connector.execute_query("SELECT 1 as test")
+                click.echo("✅ Dremio connection successful!")
+                click.echo(f"Test query result: {result.to_pandas()['test'].iloc[0]}\n")
+            except Exception as e:
+                click.echo(f"❌ Dremio connection failed: {str(e)}\n")
         
-        connector = DremioConnector(**dremio_config)
-        
-        # Try a simple query
-        result = connector.execute_query("SELECT 1 as test")
-        
-        click.echo("\n✅ Connection successful!")
-        click.echo(f"Test query result: {result.to_pandas()['test'].iloc[0]}")
-        click.echo()
+        if source in ['hana', 'both']:
+            click.echo("🔌 Testing SAP HANA connection...\n")
+            hana_config = config_loader.get_hana_config()
+            click.echo(f"Hostname: {hana_config['hostname']}")
+            click.echo(f"Port: {hana_config['port']}")
+            click.echo(f"Encrypt: {hana_config['encrypt']}")
+            
+            try:
+                connector = HanaConnector(**hana_config)
+                result = connector.execute_query("SELECT 1 as test FROM DUMMY")
+                click.echo("✅ SAP HANA connection successful!")
+                click.echo(f"Test query result: {result.to_pandas()['test'].iloc[0]}\n")
+            except Exception as e:
+                click.echo(f"❌ SAP HANA connection failed: {str(e)}\n")
     
     except Exception as e:
-        click.echo(f"\n❌ Connection failed: {str(e)}", err=True)
+        click.echo(f"\n❌ Error: {str(e)}", err=True)
         sys.exit(1)
 
 

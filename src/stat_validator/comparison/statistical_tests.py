@@ -219,10 +219,15 @@ class StatisticalTests:
             source_dist['pct'] = source_dist['cnt'] / source_dist['cnt'].sum()
             dest_dist['pct'] = dest_dist['cnt'] / dest_dist['cnt'].sum()
             
+            # Convert value column to string to handle type mismatches
+            value_col = source_dist.columns[0]  # First column is the value column
+            source_dist[value_col] = source_dist[value_col].astype(str)
+            dest_dist[value_col] = dest_dist[value_col].astype(str)
+            
             # Merge distributions
             merged = source_dist.merge(
                 dest_dist,
-                on=source_dist.columns[0],  # Value column
+                on=value_col,
                 how='outer',
                 suffixes=('_src', '_dst')
             )
@@ -367,10 +372,17 @@ class StatisticalTests:
                     details={'reason': 'No data'}
                 )
             
+            # Convert value column to string to handle type mismatches
+            value_col = source_dist.columns[0]
+            source_dist = source_dist.copy()
+            dest_dist = dest_dist.copy()
+            source_dist[value_col] = source_dist[value_col].astype(str)
+            dest_dist[value_col] = dest_dist[value_col].astype(str)
+            
             # Create contingency table
             merged = source_dist.merge(
                 dest_dist,
-                on=source_dist.columns[0],
+                on=value_col,
                 how='outer',
                 suffixes=('_src', '_dst')
             ).fillna(0)

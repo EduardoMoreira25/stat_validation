@@ -9,6 +9,9 @@ import polars as pl
 import pandas as pd
 from typing import Optional, List, Tuple, Dict, Any
 from .base_connector import BaseConnector
+from ..utils.logger import get_logger
+
+logger = get_logger('dremio_connector')
 
 
 class FlightConnector:
@@ -171,16 +174,30 @@ class DremioConnector(BaseConnector):
         else:
             raise ValueError(f"Unsupported engine: {engine}")
     
-    def cache_query(self, sql_query: str, table_name: str = "cached_data"):
-        """
-        Execute query and cache results to DuckDB.
-        
-        Args:
-            sql_query: SQL query string
-            table_name: Name for cached table
-        """
-        arrow_table = self.execute_query(sql_query)
-        self.duckdb_cache.cache_table(arrow_table, table_name)
+    def cache_query(self, query: str, table_name: str = "cached_data"):
+        """Cache query result to DuckDB."""
+        try:
+            # Execute query
+            result = self.execute_query(query)
+            df = result.to_pandas()
+            
+            # Clean string columns to handle invalid Unicode
+            for col in df.columns:
+                if df[col].dtype == 'object':  # String columns
+                    df[col] = df[col].apply(lambda x: x.encode('utf-8', errors='ignore').decode('utf-8') if isinstance(x, str) else x)
+            
+            # Store in DuckDB cache
+            conn = self.get_cache_connection()
+            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+            conn.register(table_name, df)
+            conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM {table_name}")
+            conn.unregister(table_name)
+            
+            logger.info(f"Cached {len(df)} rows to {table_name}")
+            
+        except Exception as e:
+            logger.error(f"Failed to cache query: {str(e)}")
+            raise
     
     def query_cache(self, sql_query: str) -> pl.DataFrame:
         """

@@ -105,3 +105,16 @@ class ConfigLoader:
     def get_all(self) -> Dict[str, Any]:
         """Get entire configuration dictionary."""
         return self.config
+    
+    def get_hana_config(self) -> Dict[str, Any]:
+        """Get HANA connection configuration from environment."""
+        return {
+            'hostname': os.getenv('HANA_HOST', 'localhost'),
+            'port': int(os.getenv('HANA_PORT', '30015')),
+            'username': os.getenv('HANA_USER'),
+            'password': os.getenv('HANA_PASSWORD'),
+            'schema': os.getenv('HANA_SCHEMA'),
+            'encrypt': os.getenv('HANA_ENCRYPT', 'true').lower() == 'true',
+            'ssl_validate_certificate': os.getenv('HANA_SSL_VALIDATE', 'false').lower() == 'true',
+            'db': os.getenv('DUCKDB_CACHE_PATH', '_validation_cache.duckdb')
+        }
