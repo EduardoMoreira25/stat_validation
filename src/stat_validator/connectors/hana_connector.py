@@ -55,7 +55,7 @@ class HanaConnector(BaseConnector):
     ):
         """
         Initialize SAP HANA connector.
-        
+
         Args:
             hostname: HANA hostname
             port: HANA port (default: 30015)
@@ -66,6 +66,8 @@ class HanaConnector(BaseConnector):
             ssl_validate_certificate: Validate SSL certificate
             db: DuckDB cache file path
         """
+        super().__init__()  # Initialize BaseConnector
+
         self.hostname = hostname
         self.port = port
         self.username = username
@@ -73,7 +75,7 @@ class HanaConnector(BaseConnector):
         self.schema = schema
         self.encrypt = encrypt
         self.ssl_validate_certificate = ssl_validate_certificate
-        
+
         self._connection = None
         self.duckdb_cache = DuckDBCache(db)
     
@@ -105,30 +107,8 @@ class HanaConnector(BaseConnector):
         finally:
             cursor.close()
     
-    def cache_query(self, query: str, table_name: str = "cached_data"):
-        """Cache query result to DuckDB."""
-        try:
-            # Execute query
-            result = self.execute_query(query)
-            df = result.to_pandas()
-            
-            # Clean string columns to handle invalid Unicode
-            for col in df.columns:
-                if df[col].dtype == 'object':  # String columns
-                    df[col] = df[col].apply(lambda x: x.encode('utf-8', errors='ignore').decode('utf-8') if isinstance(x, str) else x)
-            
-            # Store in DuckDB cache
-            conn = self.get_cache_connection()
-            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
-            conn.register(table_name, df)
-            conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM {table_name}")
-            conn.unregister(table_name)
-            
-            logger.info(f"Cached {len(df)} rows to {table_name}")
-            
-        except Exception as e:
-            logger.error(f"Failed to cache query: {str(e)}")
-            raise
+    # cache_query is now inherited from BaseConnector - no override needed
+    # The shared implementation handles all the caching logic
     
     def query_cache(self, sql_query: str) -> pl.DataFrame:
         """Query cached data in DuckDB."""

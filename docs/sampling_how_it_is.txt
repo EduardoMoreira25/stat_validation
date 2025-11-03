@@ -1,0 +1,6 @@
+Option 1: Full table for distributions (best accuracy)
+
+Null rate: Full table ✅ (already doing this)
+Row count: Full table ✅ (already doing this)
+Categorical distributions (PSI/Chi-square): Query full table aggregates
+KS-test/T-test: Sample is OK (central limit theorem applies)

@@ -119,7 +119,7 @@ class DremioConnector(BaseConnector):
     ):
         """
         Initialize Dremio connector.
-        
+
         Args:
             hostname: Dremio hostname
             flightport: Arrow Flight port (default: 32010)
@@ -133,9 +133,11 @@ class DremioConnector(BaseConnector):
             engine: Dremio engine name
             db: DuckDB cache file path
         """
+        super().__init__()  # Initialize BaseConnector
+
         if trusted_certificates is None:
             trusted_certificates = certifi.where()
-        
+
         self.flight_connector = FlightConnector(
             host=hostname,
             port=flightport,
@@ -174,30 +176,8 @@ class DremioConnector(BaseConnector):
         else:
             raise ValueError(f"Unsupported engine: {engine}")
     
-    def cache_query(self, query: str, table_name: str = "cached_data"):
-        """Cache query result to DuckDB."""
-        try:
-            # Execute query
-            result = self.execute_query(query)
-            df = result.to_pandas()
-            
-            # Clean string columns to handle invalid Unicode
-            for col in df.columns:
-                if df[col].dtype == 'object':  # String columns
-                    df[col] = df[col].apply(lambda x: x.encode('utf-8', errors='ignore').decode('utf-8') if isinstance(x, str) else x)
-            
-            # Store in DuckDB cache
-            conn = self.get_cache_connection()
-            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
-            conn.register(table_name, df)
-            conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM {table_name}")
-            conn.unregister(table_name)
-            
-            logger.info(f"Cached {len(df)} rows to {table_name}")
-            
-        except Exception as e:
-            logger.error(f"Failed to cache query: {str(e)}")
-            raise
+    # cache_query is now inherited from BaseConnector - no override needed
+    # The shared implementation handles all the caching logic
     
     def query_cache(self, sql_query: str) -> pl.DataFrame:
         """

@@ -187,7 +187,15 @@ def run_bulk_comparison(csv_path: str, output_dir: str = './reports/bulk', verbo
 
 def generate_html_summary(results: list, duration) -> str:
     """Generate HTML summary report."""
-    
+
+    # Convert absolute paths to relative paths for portability
+    # All reports are in the same directory, so just use the filename
+    for result in results:
+        if 'report_html' in result and result['report_html']:
+            result['report_html'] = os.path.basename(result['report_html'])
+        if 'report_json' in result and result['report_json']:
+            result['report_json'] = os.path.basename(result['report_json'])
+
     # Count statuses
     total = len(results)
     passed = len([r for r in results if r['status'] == 'PASS'])

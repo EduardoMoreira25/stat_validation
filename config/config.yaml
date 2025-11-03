@@ -13,8 +13,20 @@ thresholds:
 # Sampling Configuration
 sampling:
   enabled: true                     # change to false if dont want sample but want entire table
-  max_sample_size: 50000            # Sample size for large tables
+  strategy: 'hash'                  # Sampling strategy: 'hash' (recommended), 'random' (legacy)
+
+  # Percentage-based sampling (set target_pct to enable - requires COUNT(*) on table)
+  target_pct: null                  # Set to number (e.g., 5 = 5%) to use percentage-based sampling
+  min_size: 1000                    # Minimum sample size (only used if target_pct is set)
+  max_size: 1000000                 # Maximum sample size (only used if target_pct is set)
+
+  # Legacy fixed-size sampling (used if target_pct is not set)
+  max_sample_size: 50000            # Fixed sample size for large tables (legacy)
   min_sample_size: 30               # Minimum sample for statistical tests
+
+  # Hash-based sampling options (only used when strategy='hash')
+  hash_column: null                 # Column to use for hashing (null = auto-detect 'id', 'key', etc.)
+  seed: 42                          # Seed for reproducibility (not used in hash strategy, deterministic by nature)
 
 # Categorical Column Handling
 categorical:
