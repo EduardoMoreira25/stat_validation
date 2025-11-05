@@ -10,6 +10,7 @@ import pandas as pd
 from typing import Optional, List, Tuple, Dict, Any
 from .base_connector import BaseConnector
 from ..utils.logger import get_logger
+from ..utils.config_loader import ConfigLoader
 
 logger = get_logger('dremio_connector')
 
@@ -151,7 +152,75 @@ class DremioConnector(BaseConnector):
             engine=engine
         )
         self.duckdb_cache = DuckDBCache(db)
+
+        # Load Dremio null-equivalent configuration
+        self.config = ConfigLoader()
+        self.transform_nulls = self.config.get('dremio.transform_null_equivalents', True)
+        self.null_patterns = self.config.get('dremio.null_equivalents', {})
     
+    def transform_column_for_null_equivalents(self, column_name: str, arrow_type: pa.DataType) -> str:
+        """
+        Transform a column to treat null-equivalent values as actual NULLs.
+
+        This handles Dremio's convention of storing empty strings or other special values
+        that should be treated as NULL for comparison purposes.
+
+        Args:
+            column_name: The column name (quoted)
+            arrow_type: PyArrow data type of the column
+
+        Returns:
+            SQL expression that converts null-equivalent values to NULL
+        """
+        if not self.transform_nulls or not self.null_patterns:
+            return column_name
+
+        # Determine which patterns to apply based on data type
+        patterns_to_apply = []
+
+        # Date/Timestamp columns - DO NOT apply string patterns (causes Gandiva errors)
+        # Native DATE columns should be left as-is
+        if pa.types.is_date(arrow_type) or pa.types.is_timestamp(arrow_type):
+            # Do not apply transformations to native date/timestamp columns
+            # These columns don't have "00000000" as they are proper date types
+            pass
+
+        # Time columns - DO NOT apply string patterns (causes Gandiva errors)
+        elif pa.types.is_time(arrow_type):
+            # Do not apply transformations to native time columns
+            pass
+
+        # String/VARCHAR columns (catch all text types)
+        # These may contain date-like strings such as "00000000" that need to be treated as NULL
+        elif pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type) or pa.types.is_unicode(arrow_type):
+            # Apply patterns to string columns only
+            patterns_to_apply.extend(self.null_patterns.get('string_patterns', []))
+
+        # Numeric columns
+        elif pa.types.is_integer(arrow_type) or pa.types.is_floating(arrow_type) or pa.types.is_decimal(arrow_type):
+            patterns_to_apply.extend(self.null_patterns.get('numeric_patterns', []))
+
+        # If no patterns apply, return column as-is
+        if not patterns_to_apply:
+            return column_name
+
+        # Build nested NULLIF expressions
+        # NULLIF(NULLIF(NULLIF(col, 'val1'), 'val2'), 'val3')
+        result = column_name
+        for pattern in patterns_to_apply:
+            if isinstance(pattern, str):
+                # Escape single quotes in pattern
+                escaped_pattern = pattern.replace("'", "''")
+                result = f"NULLIF({result}, '{escaped_pattern}')"
+            else:
+                # Numeric patterns don't need quotes
+                result = f"NULLIF({result}, {pattern})"
+
+        # Keep the original column name as alias
+        result = f"{result} AS {column_name}"
+
+        return result
+
     def execute_query(self, query: str) -> pa.Table:
         """Execute query against Dremio and return PyArrow table."""
         return self.flight_connector.execute_query(query)

@@ -11,6 +11,8 @@ from .connectors.hana_connector import HanaConnector
 from .comparison.comparator import TableComparator
 from .reporting.report_generator import ReportGenerator
 from .reporting.alerting import AlertManager
+from .profiling.profiler import TableProfiler
+from .profiling.profile_report_generator import ProfileReportGenerator
 
 
 @click.group()
@@ -365,6 +367,105 @@ def test_connection(source: str):
     
     except Exception as e:
         click.echo(f"\n❌ Error: {str(e)}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('table_name')
+@click.option('--config', '-c', help='Path to config YAML file')
+@click.option('--env', '-e', help='Path to .env file')
+@click.option('--source', '-s', type=click.Choice(['dremio', 'hana']), default='hana',
+              help='Data source type (default: hana)')
+@click.option('--output-dir', '-o', default='./profiles', help='Output directory for profiles')
+@click.option('--formats', '-f', multiple=True, default=['json', 'html'],
+              help='Report formats (json, html)')
+@click.option('--sample-size', default=50000, help='Number of rows to sample')
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+def profile(
+    table_name: str,
+    config: Optional[str],
+    env: Optional[str],
+    source: str,
+    output_dir: str,
+    formats: tuple,
+    sample_size: int,
+    verbose: bool
+):
+    """
+    Generate statistical profile for a table.
+
+    This command analyzes a table and generates a comprehensive statistical
+    profile including metrics for numerical, categorical, and temporal columns.
+
+    Examples:
+
+        # Profile a HANA table (default)
+        stat-validator profile '"SAPISU"."rfn_adcp"'
+
+        # Profile a Dremio table
+        stat-validator profile 'ulysses1.schema."table_name"' --source dremio
+
+        # Specify output directory and sample size
+        stat-validator profile '"SCHEMA"."TABLE"' -o ./my_profiles --sample-size 100000
+
+        # Generate only JSON format
+        stat-validator profile '"SCHEMA"."TABLE"' -f json
+    """
+    try:
+        # Setup logging
+        import logging
+        log_level = logging.DEBUG if verbose else logging.INFO
+        logger = setup_logging(default_level=log_level)
+
+        click.echo(f"\n🔍 Statistical Profile Generation")
+        click.echo(f"{'='*60}\n")
+
+        # Load configuration
+        config_loader = ConfigLoader(config_path=config, env_path=env)
+
+        # Connect to data source
+        click.echo(f"Connecting to {source.upper()}...")
+        if source == 'hana':
+            hana_config = config_loader.get_hana_config()
+            connector = HanaConnector(**hana_config)
+        else:
+            dremio_config = config_loader.get_dremio_config()
+            connector = DremioConnector(**dremio_config)
+
+        click.echo("✅ Connected\n")
+
+        # Initialize profiler
+        profiler = TableProfiler(
+            connector=connector,
+            sample_size=sample_size
+        )
+
+        # Generate profile
+        profile = profiler.profile_table(table_name)
+
+        # Generate reports
+        click.echo(f"\nGenerating reports...")
+        report_gen = ProfileReportGenerator(output_dir)
+        report_files = report_gen.generate_report(profile, formats=list(formats))
+
+        click.echo(f"\n✅ Profile reports generated:")
+        for fmt, path in report_files.items():
+            click.echo(f"  {fmt.upper()}: {path}")
+
+        click.echo(f"\n📊 Profile Summary:")
+        click.echo(f"  Table: {profile['metadata']['table_name']}")
+        click.echo(f"  Rows: {profile['metadata']['row_count']:,}" if profile['metadata']['row_count'] else "  Rows: Unknown")
+        click.echo(f"  Columns: {profile['metadata']['column_count']}")
+        click.echo(f"  Completeness: {profile['table_metrics']['completeness_percentage']}%")
+        click.echo()
+
+        sys.exit(0)
+
+    except Exception as e:
+        click.echo(f"\n❌ Error: {str(e)}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
         sys.exit(1)
 
 

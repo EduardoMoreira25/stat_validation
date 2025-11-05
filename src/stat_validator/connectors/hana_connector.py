@@ -9,6 +9,7 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 from .base_connector import BaseConnector
 from ..utils.logger import get_logger
+from ..utils.config_loader import ConfigLoader
 
 logger = get_logger('hana_connector')
 
@@ -78,6 +79,11 @@ class HanaConnector(BaseConnector):
 
         self._connection = None
         self.duckdb_cache = DuckDBCache(db)
+
+        # Load SAP null-equivalent configuration
+        self.config = ConfigLoader()
+        self.transform_nulls = self.config.get('sap_hana.transform_null_equivalents', True)
+        self.null_patterns = self.config.get('sap_hana.null_equivalents', {})
     
     def _get_connection(self):
         """Get or create HANA connection."""
@@ -92,6 +98,66 @@ class HanaConnector(BaseConnector):
                 currentSchema=self.schema
             )
         return self._connection
+
+    def transform_column_for_null_equivalents(self, column_name: str, arrow_type: pa.DataType) -> str:
+        """
+        Transform a column to treat SAP null-equivalent values as actual NULLs.
+
+        This handles SAP HANA's convention of using special values (e.g., '00000000' for dates)
+        to represent "not set" or NULL values.
+
+        Args:
+            column_name: The column name (quoted)
+            arrow_type: PyArrow data type of the column
+
+        Returns:
+            SQL expression that converts null-equivalent values to NULL
+        """
+        if not self.transform_nulls or not self.null_patterns:
+            return column_name
+
+        # Determine which patterns to apply based on data type
+        patterns_to_apply = []
+
+        # Date/Timestamp columns
+        if pa.types.is_date(arrow_type) or pa.types.is_timestamp(arrow_type):
+            patterns_to_apply.extend(self.null_patterns.get('date_patterns', []))
+
+        # Time columns
+        elif pa.types.is_time(arrow_type):
+            patterns_to_apply.extend(self.null_patterns.get('time_patterns', []))
+
+        # String/VARCHAR columns (catch all text types)
+        elif pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type) or pa.types.is_unicode(arrow_type):
+            # Apply both date and time patterns to string columns (SAP often stores dates as strings)
+            patterns_to_apply.extend(self.null_patterns.get('date_patterns', []))
+            patterns_to_apply.extend(self.null_patterns.get('time_patterns', []))
+            patterns_to_apply.extend(self.null_patterns.get('string_patterns', []))
+
+        # Numeric columns
+        elif pa.types.is_integer(arrow_type) or pa.types.is_floating(arrow_type) or pa.types.is_decimal(arrow_type):
+            patterns_to_apply.extend(self.null_patterns.get('numeric_patterns', []))
+
+        # If no patterns apply, return column as-is
+        if not patterns_to_apply:
+            return column_name
+
+        # Build nested NULLIF expressions
+        # NULLIF(NULLIF(NULLIF(col, 'val1'), 'val2'), 'val3')
+        result = column_name
+        for pattern in patterns_to_apply:
+            if isinstance(pattern, str):
+                # Escape single quotes in pattern
+                escaped_pattern = pattern.replace("'", "''")
+                result = f"NULLIF({result}, '{escaped_pattern}')"
+            else:
+                # Numeric patterns don't need quotes
+                result = f"NULLIF({result}, {pattern})"
+
+        # Keep the original column name as alias
+        result = f"{result} AS {column_name}"
+
+        return result
     
     def execute_query(self, query: str) -> pa.Table:
         """Execute query against HANA and return PyArrow table."""

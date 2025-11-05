@@ -28,6 +28,40 @@ sampling:
   hash_column: null                 # Column to use for hashing (null = auto-detect 'id', 'key', etc.)
   seed: 42                          # Seed for reproducibility (not used in hash strategy, deterministic by nature)
 
+# SAP HANA-Specific Handling
+sap_hana:
+  # Treat these values as NULL when comparing SAP HANA data
+  # This handles SAP's convention of using special values to represent "not set"
+  null_equivalents:
+    # Date fields: 00000000, 0000-00-00
+    date_patterns: ['00000000', '0000-00-00', '00000000000000']
+    # Time fields: 000000, 00:00:00
+    time_patterns: ['000000', '00:00:00', '000000000000']
+    # Numeric fields that represent "not set"
+    numeric_patterns: []  # Add patterns like [0, -1] if needed
+    # String fields (empty strings, spaces)
+    string_patterns: ['', ' ']
+
+  # Enable/disable transformation
+  transform_null_equivalents: true
+
+# Dremio-Specific Handling
+dremio:
+  # Treat these values as NULL when comparing Dremio data
+  # This handles Dremio's storage of empty strings and other null-equivalent values
+  null_equivalents:
+    # Date fields (if stored as DATE type)
+    date_patterns: ['00000000', '0000-00-00', '00000000000000']
+    # Time fields (if stored as TIME type)
+    time_patterns: ['000000', '00:00:00', '000000000000']
+    # Numeric fields that represent "not set"
+    numeric_patterns: []  # Add patterns like [0] ONLY if 0 should be treated as NULL
+    # String fields - empty strings and date-like strings that represent NULL
+    string_patterns: ['', ' ', '00000000', '0000-00-00', '00000000000000', '000000', '00:00:00', '000000000000']
+
+  # Enable/disable transformation
+  transform_null_equivalents: true
+
 # Categorical Column Handling
 categorical:
   max_cardinality_for_psi: 100      # Skip PSI if cardinality > this

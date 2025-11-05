@@ -47,11 +47,17 @@ def load_table_pairs(csv_path: str):
 
 def run_bulk_comparison(csv_path: str, output_dir: str = './reports/bulk', verbose: bool = False):
     """Run comparison for all table pairs in CSV."""
-    
+
     # Setup
-    log_level = 'DEBUG' if verbose else 'INFO'
+    import logging
+    log_level = logging.DEBUG if verbose else logging.INFO
     logger = setup_logging()
     logger.setLevel(log_level)
+
+    # Also set level for all existing loggers
+    for name in logging.root.manager.loggerDict:
+        if name.startswith('stat_validator'):
+            logging.getLogger(name).setLevel(log_level)
     
     print("=" * 80)
     print("BULK TABLE COMPARISON")

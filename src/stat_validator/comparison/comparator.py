@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from ..connectors.base_connector import BaseConnector
 from ..connectors.hana_connector import HanaConnector
+from ..connectors.dremio_connector import DremioConnector
 from ..utils.logger import get_logger
 from .statistical_tests import StatisticalTests, TestResult
 from .schema_validator import SchemaValidator
@@ -179,6 +180,48 @@ class TableComparator:
 
         logger.info(f"Calculated sample size: {sample_size:,} ({sample_size/total_rows*100:.2f}% of {total_rows:,} rows)")
         return sample_size
+
+    def _build_column_list(
+        self,
+        columns: List[str],
+        schema: pa.Schema,
+        connector: BaseConnector
+    ) -> str:
+        """
+        Build column list with null-equivalent transformations if applicable.
+
+        Args:
+            columns: List of column names to include
+            schema: PyArrow schema with column types
+            connector: Connector instance (to check if it supports transformations)
+
+        Returns:
+            Comma-separated column list, with NULLIF transformations if supported
+        """
+        # Create a mapping from column name to type
+        schema_map = {field.name: field.type for field in schema}
+
+        # Check if connector supports null-equivalent transformations
+        has_transform_method = hasattr(connector, 'transform_column_for_null_equivalents')
+
+        if has_transform_method and (isinstance(connector, (HanaConnector, DremioConnector))):
+            transformed_cols = []
+            for col in columns:
+                quoted_col = f'"{col}"'
+                if col in schema_map:
+                    # Apply null-equivalent transformation
+                    transformed_col = connector.transform_column_for_null_equivalents(
+                        quoted_col,
+                        schema_map[col]
+                    )
+                    transformed_cols.append(transformed_col)
+                else:
+                    # Column not in schema, use as-is
+                    transformed_cols.append(quoted_col)
+            return ', '.join(transformed_cols)
+        else:
+            # For connectors without transformations, just quote column names
+            return ', '.join([f'"{col}"' for col in columns])
 
     def _build_sample_query(
         self,
@@ -540,23 +583,22 @@ class TableComparator:
             # Map source column names to their equivalents in dest (excluding binary)
             source_cols = []
             dest_cols = []
-            
+
             for col in columns:
                 col_upper = col.upper()
                 if col_upper in source_col_map:
                     source_cols.append(source_col_map[col_upper])
                 if col_upper in dest_col_map:
                     dest_cols.append(dest_col_map[col_upper])
-            
-            source_col_list = ', '.join([f'"{col}"' for col in source_cols])
-            dest_col_list = ', '.join([f'"{col}"' for col in dest_cols])
         else:
             # Select all non-binary columns
             source_cols = source_cacheable
             dest_cols = dest_cacheable
-            source_col_list = ', '.join([f'"{col}"' for col in source_cacheable])
-            dest_col_list = ', '.join([f'"{col}"' for col in dest_cacheable])
-        
+
+        # Build column lists with SAP null transformations if needed
+        source_col_list = self._build_column_list(source_cols, source_schema, self.source_connector)
+        dest_col_list = self._build_column_list(dest_cols, dest_schema, self.dest_connector)
+
         # Build queries with optimized sampling (exclude binary columns from hash selection)
         source_query = self._build_sample_query(
             source_col_list,
@@ -704,6 +746,10 @@ class TableComparator:
 
         For a 100-column table, this reduces 200 full scans to just 2 scans.
 
+        IMPORTANT: This queries the cached tables (cached_source and cached_dest) which
+        already have null-equivalent transformations applied (e.g., empty strings -> NULL
+        in Dremio, '00000000' -> NULL in SAP HANA).
+
         Args:
             columns: List of column names to check (using original display case)
 
@@ -712,35 +758,45 @@ class TableComparator:
             where null_counts are dicts mapping column -> null count
         """
         try:
-            # Get total row counts
-            src_total = self.source_connector.get_row_count(self.source_table_name)
-            dst_total = self.dest_connector.get_row_count(self.dest_table_name)
+            # Get DuckDB connection (cached tables already have transformations applied)
+            conn = self.source_connector.get_cache_connection()
 
-            # Build single aggregation query for all columns at once
-            # Uses CASE WHEN for conditional counting - efficient and portable
-            src_case_statements = ', '.join([
-                f'SUM(CASE WHEN "{col}" IS NULL THEN 1 ELSE 0 END) as "{col}_nulls"'
-                for col in columns
-            ])
+            # Get total row counts from cached tables
+            src_total = conn.execute("SELECT COUNT(*) FROM cached_source").fetchone()[0]
+            dst_total = conn.execute("SELECT COUNT(*) FROM cached_dest").fetchone()[0]
 
-            dst_case_statements = ', '.join([
-                f'SUM(CASE WHEN "{col}" IS NULL THEN 1 ELSE 0 END) as "{col}_nulls"'
-                for col in columns
-            ])
+            # Build CASE statements for cached tables (columns are lowercase in DuckDB)
+            src_case_statements = []
+            dst_case_statements = []
 
-            # Execute single query per table
-            src_query = f'SELECT {src_case_statements} FROM {self.source_table_name}'
-            dst_query = f'SELECT {dst_case_statements} FROM {self.dest_table_name}'
+            for col in columns:
+                col_lower = col.lower()  # DuckDB stores columns in lowercase
+                src_case_statements.append(
+                    f'SUM(CASE WHEN "{col_lower}" IS NULL THEN 1 ELSE 0 END) as "{col}_nulls"'
+                )
+                dst_case_statements.append(
+                    f'SUM(CASE WHEN "{col_lower}" IS NULL THEN 1 ELSE 0 END) as "{col}_nulls"'
+                )
 
-            logger.info(f"Fetching null counts for {len(columns)} columns in batch (2 queries total)...")
+            # Execute single query per cached table
+            src_case_list = ', '.join(src_case_statements)
+            dst_case_list = ', '.join(dst_case_statements)
 
-            src_result = self.source_connector.execute_query(src_query).to_pandas().iloc[0]
-            dst_result = self.dest_connector.execute_query(dst_query).to_pandas().iloc[0]
+            src_query = f'SELECT {src_case_list} FROM cached_source'
+            dst_query = f'SELECT {dst_case_list} FROM cached_dest'
+
+            logger.info(f"Fetching null counts for {len(columns)} columns from cached tables (2 queries total)...")
+            logger.debug(f"Source null count query (cached): {src_query[:500]}...")
+            logger.debug(f"Dest null count query (cached): {dst_query[:500]}...")
+
+            src_result = conn.execute(src_query).fetchdf().iloc[0]
+            dst_result = conn.execute(dst_query).fetchdf().iloc[0]
 
             # Parse results into dictionaries
             src_null_counts = {col: int(src_result[f'{col}_nulls']) for col in columns}
             dst_null_counts = {col: int(dst_result[f'{col}_nulls']) for col in columns}
 
+            conn.close()
             return src_null_counts, dst_null_counts, src_total, dst_total
 
         except Exception as e:
