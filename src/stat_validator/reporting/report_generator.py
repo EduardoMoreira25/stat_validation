@@ -211,7 +211,34 @@ class ReportGenerator:
         .status-count.warning {{ background: #ffc107; color: #333; }}
         .status-count.error {{ background: #6c757d; color: white; }}
         .status-count.skip {{ background: #17a2b8; color: white; }}
-        
+
+        /* FDR Correction Badge */
+        .fdr-badge {{
+            display: inline-block;
+            padding: 3px 8px;
+            margin-left: 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            background: #17a2b8;
+            color: white;
+        }}
+        .fdr-info-box {{
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }}
+        .fdr-info-box h3 {{
+            margin-top: 0;
+            color: #0c5460;
+        }}
+        .fdr-info-box p {{
+            margin: 5px 0;
+            color: #0c5460;
+        }}
+
         table {{
             width: 100%;
             border-collapse: collapse;
@@ -366,7 +393,7 @@ class ReportGenerator:
             </div>
         </div>
 """
-        
+
         # Quick Summary by Test Status
         html += """
         <div class="quick-summary">
@@ -415,12 +442,23 @@ class ReportGenerator:
             column = test.get('column', '-')
             status = test['status']
             details_json = json.dumps(test.get('details', {}), indent=2, default=str)
-            
+
+            # Check if FDR corrected
+            fdr_corrected = test.get('details', {}).get('fdr_corrected', False)
+            fdr_changed = 'fdr_original_status' in test.get('details', {})
+            fdr_badge = ''
+            if fdr_corrected:
+                if fdr_changed:
+                    original_status = test.get('details', {}).get('fdr_original_status', '')
+                    fdr_badge = f'<span class="fdr-badge" title="Status changed from {original_status} by FDR correction">FDR ✓</span>'
+                else:
+                    fdr_badge = '<span class="fdr-badge" title="FDR correction applied (status unchanged)">FDR</span>'
+
             html += f"""
                 <tr>
                     <td>{test['test_name']}</td>
                     <td>{column}</td>
-                    <td><span class="status-cell status-{status}">{status}</span></td>
+                    <td><span class="status-cell status-{status}">{status}</span>{fdr_badge}</td>
                     <td>
                         <button class="details-toggle" id="btn-{idx}" onclick="toggleDetails({idx})">▶ Show Details</button>
                         <div class="details-content" id="details-{idx}">{details_json}</div>

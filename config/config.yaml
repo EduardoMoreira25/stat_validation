@@ -10,6 +10,17 @@ thresholds:
   chi_square_pvalue: 0.05           # Chi-square test threshold
   t_test_pvalue: 0.05               # T-test threshold
 
+  # Multiple Testing Correction (False Discovery Rate)
+  # When testing 100 columns at α=0.05, expect ~5 false positives by chance
+  # FDR correction controls the proportion of false discoveries among all rejected tests
+  fdr_correction:
+    enabled: true                  # Set to true to enable FDR correction (disabled by default for backward compatibility)
+    method: 'bh'                    # 'bh' = Benjamini-Hochberg (recommended), 'by' = Benjamini-Yekutieli (more conservative)
+    alpha: 0.05                     # Family-wise error rate (typically same as individual test alpha)
+    apply_per_test_type: true       # If true, apply FDR separately to KS-tests, T-tests, and Chi-square tests
+                                    # If false, apply FDR globally across all p-value tests
+                                    # Recommendation: true (different tests have different assumptions)
+
 # Sampling Configuration
 sampling:
   enabled: true                     # change to false if dont want sample but want entire table
@@ -62,24 +73,24 @@ dremio:
   # Enable/disable transformation
   transform_null_equivalents: true
 
-# Categorical Column Handling
+# Categorical Column Handling (for compare-cross)
 categorical:
   max_cardinality_for_psi: 100      # Skip PSI if cardinality > this
   max_cardinality_for_chi_square: 50
-
-# Performance
-performance:
-  parallel_column_tests: false      # Enable parallel processing (future)
-  chunk_size: 10000                 # For chunked processing
 
 # Reporting
 reporting:
   output_format: ['json', 'html']   # Supported: json, html, csv
   save_detailed_stats: true
-  include_visualizations: false     # Future feature
 
-# Alerting
-alerting:
-  enabled: false
-  on_failure_only: true
-  channels: []                      # email, slack
+# Temporal Filtering for Incremental Validation
+temporal_filters:
+  # SAP HANA temporal column configuration
+  sap:
+    column: "REFRESH_DT"            # Column name in SAP tables (assuming all tables have this)
+    sql_template: "TO_DATE({column}) = TO_DATE('{date}')"  # SQL filter template
+
+  # Dremio temporal column configuration
+  dremio:
+    column: "system_ts"             # Column name in Dremio tables (ETL timestamp)
+    sql_template: "CAST({column} AS DATE) = DATE '{date}'"  # SQL filter template

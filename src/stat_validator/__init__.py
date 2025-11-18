@@ -10,7 +10,7 @@ __author__ = 'Your Team'
 
 from .connectors import DremioConnector
 from .comparison import TableComparator, StatisticalTests
-from .reporting import ReportGenerator, AlertManager
+from .reporting import ReportGenerator
 from .utils import ConfigLoader, setup_logging
 
 __all__ = [
@@ -18,7 +18,6 @@ __all__ = [
     'TableComparator',
     'StatisticalTests',
     'ReportGenerator',
-    'AlertManager',
     'ConfigLoader',
     'setup_logging',
 ]

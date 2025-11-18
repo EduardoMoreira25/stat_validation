@@ -1,6 +1,5 @@
-"""Reporting and alerting modules."""
+"""Reporting modules."""
 
 from .report_generator import ReportGenerator
-from .alerting import AlertManager
 
-__all__ = ['ReportGenerator', 'AlertManager']
+__all__ = ['ReportGenerator']

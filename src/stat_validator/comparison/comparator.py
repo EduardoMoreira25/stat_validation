@@ -6,6 +6,7 @@ import pandas as pd
 import pyarrow as pa
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+from scipy.stats import false_discovery_control
 from ..connectors.base_connector import BaseConnector
 from ..connectors.hana_connector import HanaConnector
 from ..connectors.dremio_connector import DremioConnector
@@ -229,7 +230,8 @@ class TableComparator:
         table_name: str,
         schema: pa.Schema,
         is_hana: bool,
-        exclude_binary_cols: set = None
+        exclude_binary_cols: set = None,
+        where_clause: str = None
     ) -> str:
         """
         Build sampling query based on configured strategy.
@@ -240,14 +242,19 @@ class TableComparator:
             schema: Table schema for hash column detection
             is_hana: True if HANA connector, False for Dremio
             exclude_binary_cols: Set of binary column names to exclude from hash selection
+            where_clause: Optional WHERE clause for filtering (e.g., "TO_DATE(REFRESH_DT) = TO_DATE('2025-11-04')")
 
         Returns:
             SQL query string with sampling
         """
         if exclude_binary_cols is None:
             exclude_binary_cols = set()
+
+        # Build base WHERE clause
+        base_where = f"WHERE {where_clause}" if where_clause else ""
+
         if not self.sampling_enabled:
-            return f"SELECT {column_list} FROM {table_name}"
+            return f"SELECT {column_list} FROM {table_name} {base_where}".strip()
 
         # Determine sample size strategy
         # Only fetch row count if target_pct is explicitly set (to avoid slow COUNT(*) on large tables)
@@ -260,7 +267,7 @@ class TableComparator:
                 # If sample size >= total rows, don't sample
                 if sample_size >= row_count:
                     logger.info(f"Sample size ({sample_size}) >= table size ({row_count}), querying full table")
-                    return f"SELECT {column_list} FROM {table_name}"
+                    return f"SELECT {column_list} FROM {table_name} {base_where}".strip()
             except Exception as e:
                 logger.warning(f"Could not get row count for {table_name}: {e}. Using fixed sample size.")
                 sample_size = self.sample_size
@@ -278,18 +285,22 @@ class TableComparator:
             if hash_col:
                 sample_pct = int(sample_size / row_count * 100) + 1  # +1 to ensure we get enough rows
 
+                # Combine hash WHERE with user WHERE clause using AND
+                hash_where = f"MOD(ABS(HASH_SHA256(TO_VARCHAR(\"{hash_col}\"))), 100) < {sample_pct}" if is_hana else f"MOD(ABS(HASH(\"{hash_col}\")), 100) < {sample_pct}"
+                combined_where = f"{where_clause} AND {hash_where}" if where_clause else hash_where
+
                 if is_hana:
                     # HANA: MOD(ABS(HASH_SHA256(column)), 100)
                     query = f"""
                     SELECT {column_list} FROM {table_name}
-                    WHERE MOD(ABS(HASH_SHA256(TO_VARCHAR("{hash_col}"))), 100) < {sample_pct}
+                    WHERE {combined_where}
                     LIMIT {sample_size}
                     """
                 else:
                     # Dremio: MOD(ABS(HASH(column)), 100)
                     query = f"""
                     SELECT {column_list} FROM {table_name}
-                    WHERE MOD(ABS(HASH("{hash_col}")), 100) < {sample_pct}
+                    WHERE {combined_where}
                     LIMIT {sample_size}
                     """
 
@@ -302,11 +313,11 @@ class TableComparator:
         if is_hana:
             # HANA: Use RAND() for backward compatibility but warn about performance
             logger.warning("Using ORDER BY RAND() - this is slow on large tables. Consider hash-based sampling.")
-            query = f"SELECT {column_list} FROM {table_name} ORDER BY RAND() LIMIT {sample_size}"
+            query = f"SELECT {column_list} FROM {table_name} {base_where} ORDER BY RAND() LIMIT {sample_size}".replace("  ", " ").strip()
         else:
             # Dremio: Use random() for backward compatibility
             logger.warning("Using ORDER BY random() - this is slow on large tables. Consider hash-based sampling.")
-            query = f"SELECT {column_list} FROM {table_name} ORDER BY random() LIMIT {sample_size}"
+            query = f"SELECT {column_list} FROM {table_name} {base_where} ORDER BY random() LIMIT {sample_size}".replace("  ", " ").strip()
 
         return query
 
@@ -314,7 +325,8 @@ class TableComparator:
         self,
         column_list: str,
         table_name: str,
-        is_hana: bool
+        is_hana: bool,
+        where_clause: str = None
     ) -> str:
         """
         Build fallback query using ORDER BY RAND/random() sampling.
@@ -325,20 +337,23 @@ class TableComparator:
             column_list: Comma-separated quoted column list
             table_name: Table name
             is_hana: True if HANA connector, False for Dremio
+            where_clause: Optional WHERE clause for filtering
 
         Returns:
             SQL query string with simple random sampling
         """
+        base_where = f"WHERE {where_clause}" if where_clause else ""
+
         if not self.sampling_enabled:
-            return f"SELECT {column_list} FROM {table_name}"
+            return f"SELECT {column_list} FROM {table_name} {base_where}".strip()
 
         sample_size = self.sample_size
         logger.info(f"Using fallback ORDER BY RAND() sampling: {sample_size:,} rows")
 
         if is_hana:
-            query = f"SELECT {column_list} FROM {table_name} ORDER BY RAND() LIMIT {sample_size}"
+            query = f"SELECT {column_list} FROM {table_name} {base_where} ORDER BY RAND() LIMIT {sample_size}".replace("  ", " ").strip()
         else:
-            query = f"SELECT {column_list} FROM {table_name} ORDER BY random() LIMIT {sample_size}"
+            query = f"SELECT {column_list} FROM {table_name} {base_where} ORDER BY random() LIMIT {sample_size}".replace("  ", " ").strip()
 
         return query
 
@@ -346,16 +361,20 @@ class TableComparator:
         self,
         source_table: str,
         dest_table: str,
-        columns_to_test: Optional[List[str]] = None
+        columns_to_test: Optional[List[str]] = None,
+        source_where: Optional[str] = None,
+        dest_where: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Main comparison function.
-        
+
         Args:
             source_table: Fully qualified source table name
             dest_table: Fully qualified destination table name
             columns_to_test: Optional list of specific columns to test
-            
+            source_where: Optional WHERE clause for source table (e.g., "TO_DATE(REFRESH_DT) = TO_DATE('2025-11-04')")
+            dest_where: Optional WHERE clause for destination table (e.g., "CAST(system_ts AS DATE) = DATE '2025-11-04'")
+
         Returns:
             Dictionary with comparison results
         """
@@ -380,8 +399,8 @@ class TableComparator:
         # Phase 1: Basic Validation
         logger.info("Phase 1: Basic validation")
         print("\n[Phase 1] Basic Validation...")
-        
-        row_test = self._test_row_count(source_table, dest_table)
+
+        row_test = self._test_row_count(source_table, dest_table, source_where, dest_where)
         result['tests'].append(row_test.to_dict())
         print(f"  Row Count: {row_test.status} ({row_test.details.get('difference', 0)} rows diff)")
         
@@ -415,7 +434,9 @@ class TableComparator:
         cols_to_cache = common_column_names if common_column_names else columns_to_test
 
         try:
-            cached_source_cols, cached_dest_cols = self._cache_tables(source_table, dest_table, cols_to_cache)
+            cached_source_cols, cached_dest_cols = self._cache_tables(
+                source_table, dest_table, cols_to_cache, source_where, dest_where
+            )
         except Exception as e:
             logger.error(f"Failed to cache tables: {str(e)}")
             print(f"\n❌ Error caching tables: {str(e)}")
@@ -458,31 +479,87 @@ class TableComparator:
         
         return result
     
-    def _test_row_count(self, source_table: str, dest_table: str) -> TestResult:
-        """Test row count validation using ratio-based comparison."""
+    def _test_row_count(
+        self,
+        source_table: str,
+        dest_table: str,
+        source_where: Optional[str] = None,
+        dest_where: Optional[str] = None
+    ) -> TestResult:
+        """
+        Test row count validation using ratio-based comparison.
+
+        Args:
+            source_table: Source table name
+            dest_table: Destination table name
+            source_where: Optional WHERE clause for source (for filtered counts)
+            dest_where: Optional WHERE clause for destination (for filtered counts)
+
+        Returns:
+            TestResult with row count comparison
+        """
         logger.debug(f"Testing row count for {source_table} vs {dest_table}")
-        
+
         try:
-            source_count = self.source_connector.get_row_count(source_table)
-            dest_count = self.dest_connector.get_row_count(dest_table)
+            # If WHERE clauses provided, use filtered counts
+            if source_where or dest_where:
+                logger.info("Using filtered row counts (WHERE clause provided)")
+
+                # Build COUNT queries with WHERE clauses
+                source_query = f"SELECT COUNT(*) FROM {source_table}"
+                if source_where:
+                    source_query += f" WHERE {source_where}"
+
+                dest_query = f"SELECT COUNT(*) FROM {dest_table}"
+                if dest_where:
+                    dest_query += f" WHERE {dest_where}"
+
+                # Execute count queries
+                source_result = self.source_connector.execute_query(source_query)
+                dest_result = self.dest_connector.execute_query(dest_query)
+
+                # Extract counts from results (handle PyArrow Table format)
+                if hasattr(source_result, 'to_pylist'):
+                    # PyArrow Table: to_pylist() returns list of dicts
+                    source_count = list(source_result.to_pylist()[0].values())[0]
+                    dest_count = list(dest_result.to_pylist()[0].values())[0]
+                else:
+                    # Fallback for other formats
+                    source_count = source_result[0][0]
+                    dest_count = dest_result[0][0]
+            else:
+                # No WHERE clause - use optimized get_row_count() (existing behavior)
+                source_count = self.source_connector.get_row_count(source_table)
+                dest_count = self.dest_connector.get_row_count(dest_table)
             
             diff = dest_count - source_count
-            diff_pct = abs(diff / source_count * 100) if source_count > 0 else 100
-            
-            # Calculate ratio (dest / source)
-            ratio = dest_count / source_count if source_count > 0 else 0
-            
+
             # Threshold as ratio (e.g., 0.1% tolerance = 0.999 ratio)
             threshold_ratio = 1.0 - (self.row_count_threshold_pct / 100)
-            
-            # Determine status based on ratio
-            if ratio == 1.0:
+
+            # Handle edge case: both tables are empty (0 rows)
+            if source_count == 0 and dest_count == 0:
+                diff_pct = 0
+                ratio = 1.0  # Perfect match (both empty)
                 status = 'PASS'
-            elif ratio >= threshold_ratio:
-                status = 'WARNING'
-            else:
+            elif source_count == 0 and dest_count > 0:
+                # Destination has data but source is empty
+                diff_pct = 100
+                ratio = float('inf')  # Infinite ratio
                 status = 'FAIL'
-            
+            else:
+                # Normal case: source has data
+                diff_pct = abs(diff / source_count * 100)
+                ratio = dest_count / source_count
+
+                # Determine status based on ratio
+                if ratio == 1.0:
+                    status = 'PASS'
+                elif ratio >= threshold_ratio:
+                    status = 'WARNING'
+                else:
+                    status = 'FAIL'
+
             return TestResult(
                 test_name='row_count',
                 column=None,
@@ -492,7 +569,7 @@ class TableComparator:
                     'dest_count': dest_count,
                     'difference': diff,
                     'difference_pct': round(diff_pct, 3),
-                    'ratio': round(ratio, 6),
+                    'ratio': round(ratio, 6) if ratio != float('inf') else None,
                     'threshold_pct': self.row_count_threshold_pct,
                     'threshold_ratio': round(threshold_ratio, 6)
                 }
@@ -529,15 +606,63 @@ class TableComparator:
                 details={'error': str(e)}
             )
     
+    def _normalize_cached_table_columns(self, conn: duckdb.DuckDBPyConnection, table_name: str):
+        """
+        Normalize all column names in a cached table to lowercase.
+
+        This ensures case-insensitive comparison between SAP (uppercase) and Dremio (lowercase).
+
+        Args:
+            conn: DuckDB connection
+            table_name: Name of the cached table to normalize
+        """
+        try:
+            # Get current column names
+            columns_info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            columns = [col[1] for col in columns_info]  # col[1] is the column name
+
+            # Check if any columns need normalization (have uppercase letters)
+            needs_normalization = any(col != col.lower() for col in columns)
+            if not needs_normalization:
+                logger.debug(f"Table {table_name} already has lowercase column names")
+                return
+
+            # Build column list with lowercase aliases
+            col_mappings = [f'"{col}" AS "{col.lower()}"' for col in columns]
+            col_list = ', '.join(col_mappings)
+
+            # Step 1: Create new table with normalized column names
+            conn.execute(f"CREATE TABLE {table_name}_temp AS SELECT {col_list} FROM {table_name}")
+
+            # Step 2: Drop original table
+            conn.execute(f"DROP TABLE {table_name}")
+
+            # Step 3: Rename new table to original name
+            conn.execute(f"ALTER TABLE {table_name}_temp RENAME TO {table_name}")
+
+            logger.debug(f"Normalized {len(columns)} column names to lowercase in {table_name}")
+        except Exception as e:
+            logger.warning(f"Failed to normalize column names in {table_name}: {str(e)}")
+            # Continue anyway - the original table still exists
+
     def _cache_tables(
         self,
         source_table: str,
         dest_table: str,
-        columns: Optional[List[str]] = None
+        columns: Optional[List[str]] = None,
+        source_where: Optional[str] = None,
+        dest_where: Optional[str] = None
     ) -> tuple:
         """
         Cache source and destination tables to DuckDB.
-        
+
+        Args:
+            source_table: Source table name
+            dest_table: Destination table name
+            columns: Optional list of columns to cache
+            source_where: Optional WHERE clause for source table
+            dest_where: Optional WHERE clause for destination table
+
         Returns:
             Tuple of (source_cached_columns, dest_cached_columns)
         """
@@ -605,7 +730,8 @@ class TableComparator:
             source_table,
             source_schema,
             isinstance(self.source_connector, HanaConnector),
-            source_binary_cols
+            source_binary_cols,
+            source_where
         )
 
         dest_query = self._build_sample_query(
@@ -613,7 +739,8 @@ class TableComparator:
             dest_table,
             dest_schema,
             isinstance(self.dest_connector, HanaConnector),
-            source_binary_cols  # Use source binary cols for dest too (same columns)
+            source_binary_cols,  # Use source binary cols for dest too (same columns)
+            dest_where
         )
         
         print(f"  Caching source table (sample: {self.sampling_enabled})...")
@@ -627,7 +754,8 @@ class TableComparator:
             source_query_fallback = self._build_fallback_query(
                 source_col_list,
                 source_table,
-                isinstance(self.source_connector, HanaConnector)
+                isinstance(self.source_connector, HanaConnector),
+                source_where
             )
             self.source_connector.cache_query(source_query_fallback, "cached_source")
 
@@ -642,17 +770,24 @@ class TableComparator:
             dest_query_fallback = self._build_fallback_query(
                 dest_col_list,
                 dest_table,
-                isinstance(self.dest_connector, HanaConnector)
+                isinstance(self.dest_connector, HanaConnector),
+                dest_where
             )
             self.dest_connector.cache_query(dest_query_fallback, "cached_dest")
-        
+
+        # Normalize column names to lowercase for case-insensitive comparison
+        # Each table is in its respective connector's cache, so use separate connections
+        source_conn = self.source_connector.get_cache_connection()
+        dest_conn = self.dest_connector.get_cache_connection()
+        self._normalize_cached_table_columns(source_conn, "cached_source")
+        self._normalize_cached_table_columns(dest_conn, "cached_dest")
+
         # Get actual cached columns (some may have been dropped during caching)
-        conn = self.source_connector.get_cache_connection()
         # PRAGMA table_info returns: (cid, name, type, notnull, dflt_value, pk)
         # We need index 1 for the column name
-        cached_source_cols = [col[1] for col in conn.execute("PRAGMA table_info(cached_source)").fetchall()]
-        cached_dest_cols = [col[1] for col in conn.execute("PRAGMA table_info(cached_dest)").fetchall()]
-        
+        cached_source_cols = [col[1] for col in source_conn.execute("PRAGMA table_info(cached_source)").fetchall()]
+        cached_dest_cols = [col[1] for col in dest_conn.execute("PRAGMA table_info(cached_dest)").fetchall()]
+
         logger.info(f"Tables cached successfully. Source: {len(cached_source_cols)} cols, Dest: {len(cached_dest_cols)} cols")
 
         return cached_source_cols, cached_dest_cols
@@ -670,16 +805,40 @@ class TableComparator:
         source_schema = self.source_connector.get_table_schema(source_table)
         column_classification = self.schema_validator.classify_columns(source_schema)
 
-        # Get DuckDB connection for cached data - use source connector's cache
-        conn = self.source_connector.get_cache_connection()
+        # Get DuckDB connections for cached data (each table is in its respective connector's cache)
+        source_conn = self.source_connector.get_cache_connection()
+        dest_conn = self.dest_connector.get_cache_connection()
 
-        # Determine which columns to test
+        # Determine which columns to test (excluding binary columns)
         if columns_to_test:
-            # User specified or common columns from schema mismatch
-            all_columns = columns_to_test
+            # User specified or common columns from schema mismatch - still need to filter out binary
+            # Create a map of column names (case-insensitive) to their PyArrow fields
+            schema_map_lower = {field.name.upper(): field for field in source_schema}
+            all_columns = []
+            binary_excluded = []
+
+            for col in columns_to_test:
+                col_upper = col.upper()
+                if col_upper in schema_map_lower:
+                    field = schema_map_lower[col_upper]
+                    if self._is_binary_type(field):
+                        binary_excluded.append(col)
+                    else:
+                        all_columns.append(col)
+                else:
+                    # Column not in schema, include it (might be in dest only)
+                    all_columns.append(col)
+
+            if binary_excluded:
+                logger.info(f"Excluding {len(binary_excluded)} binary columns from statistical tests: {binary_excluded}")
         else:
-            # All columns from source
-            all_columns = [field.name for field in source_schema]
+            # All columns from source, excluding binary types
+            all_columns = [field.name for field in source_schema if not self._is_binary_type(field)]
+
+            # Log if any binary columns were excluded
+            binary_cols = [field.name for field in source_schema if self._is_binary_type(field)]
+            if binary_cols:
+                logger.info(f"Excluding {len(binary_cols)} binary columns from statistical tests: {binary_cols}")
 
         # PERFORMANCE OPTIMIZATION: Fetch all null counts in batch (2 queries instead of 2*N queries)
         print(f"\n  Fetching null counts for all {len(all_columns)} columns in batch...")
@@ -727,15 +886,16 @@ class TableComparator:
 
             # Type-specific tests
             if col_name in column_classification['numerical']:
-                results.extend(self._test_numerical_column(conn, col_name_lower, col_name))
+                results.extend(self._test_numerical_column(source_conn, dest_conn, col_name_lower, col_name))
             elif col_name in column_classification['categorical']:
-                results.extend(self._test_categorical_column(conn, col_name_lower, col_name))
+                results.extend(self._test_categorical_column(source_conn, dest_conn, col_name_lower, col_name))
             elif col_name in column_classification['temporal']:
-                results.extend(self._test_temporal_column(conn, col_name_lower, col_name))
+                results.extend(self._test_temporal_column(source_conn, dest_conn, col_name_lower, col_name))
             else:
                 print(f"    Unsupported type - skipped")
 
-        conn.close()
+        source_conn.close()
+        dest_conn.close()
         return results
     
     def _get_all_null_counts(self, columns: List[str]) -> tuple:
@@ -758,12 +918,13 @@ class TableComparator:
             where null_counts are dicts mapping column -> null count
         """
         try:
-            # Get DuckDB connection (cached tables already have transformations applied)
-            conn = self.source_connector.get_cache_connection()
+            # Get DuckDB connections (each cached table is in its respective connector's cache)
+            source_conn = self.source_connector.get_cache_connection()
+            dest_conn = self.dest_connector.get_cache_connection()
 
             # Get total row counts from cached tables
-            src_total = conn.execute("SELECT COUNT(*) FROM cached_source").fetchone()[0]
-            dst_total = conn.execute("SELECT COUNT(*) FROM cached_dest").fetchone()[0]
+            src_total = source_conn.execute("SELECT COUNT(*) FROM cached_source").fetchone()[0]
+            dst_total = dest_conn.execute("SELECT COUNT(*) FROM cached_dest").fetchone()[0]
 
             # Build CASE statements for cached tables (columns are lowercase in DuckDB)
             src_case_statements = []
@@ -789,14 +950,15 @@ class TableComparator:
             logger.debug(f"Source null count query (cached): {src_query[:500]}...")
             logger.debug(f"Dest null count query (cached): {dst_query[:500]}...")
 
-            src_result = conn.execute(src_query).fetchdf().iloc[0]
-            dst_result = conn.execute(dst_query).fetchdf().iloc[0]
+            src_result = source_conn.execute(src_query).fetchdf().iloc[0]
+            dst_result = dest_conn.execute(dst_query).fetchdf().iloc[0]
 
             # Parse results into dictionaries
             src_null_counts = {col: int(src_result[f'{col}_nulls']) for col in columns}
             dst_null_counts = {col: int(dst_result[f'{col}_nulls']) for col in columns}
 
-            conn.close()
+            source_conn.close()
+            dest_conn.close()
             return src_null_counts, dst_null_counts, src_total, dst_total
 
         except Exception as e:
@@ -842,20 +1004,21 @@ class TableComparator:
     
     def _test_numerical_column(
         self,
-        conn: duckdb.DuckDBPyConnection,
+        source_conn: duckdb.DuckDBPyConnection,
+        dest_conn: duckdb.DuckDBPyConnection,
         col_name_lower: str,
         col_name_display: str
     ) -> List[TestResult]:
         """Run numerical tests (KS-test, T-test)."""
         results = []
-        
+
         try:
-            # Fetch data using lowercase column name
-            src_data = conn.execute(
+            # Fetch data using lowercase column name from respective caches
+            src_data = source_conn.execute(
                 f'SELECT "{col_name_lower}" FROM cached_source WHERE "{col_name_lower}" IS NOT NULL'
             ).fetchnumpy()[col_name_lower]
-            
-            dst_data = conn.execute(
+
+            dst_data = dest_conn.execute(
                 f'SELECT "{col_name_lower}" FROM cached_dest WHERE "{col_name_lower}" IS NOT NULL'
             ).fetchnumpy()[col_name_lower]
             
@@ -877,32 +1040,33 @@ class TableComparator:
     
     def _test_categorical_column(
         self,
-        conn: duckdb.DuckDBPyConnection,
+        source_conn: duckdb.DuckDBPyConnection,
+        dest_conn: duckdb.DuckDBPyConnection,
         col_name_lower: str,
         col_name_display: str
     ) -> List[TestResult]:
         """Run categorical tests (PSI, Chi-square)."""
         results = []
-        
+
         try:
             # Get cardinality from cached data
-            cardinality = conn.execute(
+            cardinality = source_conn.execute(
                 f'SELECT COUNT(DISTINCT "{col_name_lower}") FROM cached_source'
             ).fetchone()[0]
-            
+
             if cardinality > self.max_cardinality_psi:
                 print(f"    Skipped (high cardinality: {cardinality})")
                 return results
-            
+
             # Get distributions from cached data
-            src_dist = conn.execute(f'''
+            src_dist = source_conn.execute(f'''
                 SELECT "{col_name_lower}" as value, COUNT(*) as cnt
                 FROM cached_source
                 WHERE "{col_name_lower}" IS NOT NULL
                 GROUP BY "{col_name_lower}"
             ''').fetchdf()
-            
-            dst_dist = conn.execute(f'''
+
+            dst_dist = dest_conn.execute(f'''
                 SELECT "{col_name_lower}" as value, COUNT(*) as cnt
                 FROM cached_dest
                 WHERE "{col_name_lower}" IS NOT NULL
@@ -931,20 +1095,21 @@ class TableComparator:
     
     def _test_temporal_column(
         self,
-        conn: duckdb.DuckDBPyConnection,
+        source_conn: duckdb.DuckDBPyConnection,
+        dest_conn: duckdb.DuckDBPyConnection,
         col_name_lower: str,
         col_name_display: str
     ) -> List[TestResult]:
         """Run temporal tests (date range)."""
         results = []
-        
+
         try:
-            # Fetch date data
-            src_data = conn.execute(
+            # Fetch date data from respective caches
+            src_data = source_conn.execute(
                 f'SELECT "{col_name_lower}" FROM cached_source WHERE "{col_name_lower}" IS NOT NULL'
             ).fetchdf()[col_name_lower]
-            
-            dst_data = conn.execute(
+
+            dst_data = dest_conn.execute(
                 f'SELECT "{col_name_lower}" FROM cached_dest WHERE "{col_name_lower}" IS NOT NULL'
             ).fetchdf()[col_name_lower]
             
@@ -964,10 +1129,148 @@ class TableComparator:
             print(f"    Temporal tests skipped - {str(e)}")
         
         return results
-    
+
+    def _apply_fdr_correction(self, tests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Apply False Discovery Rate (FDR) correction to tests with p-values.
+
+        Uses the Benjamini-Hochberg procedure to control the false discovery rate
+        across multiple hypothesis tests. This reduces false positives when testing
+        many columns simultaneously.
+
+        Example: When testing 100 columns at α=0.05, without correction you'd expect
+        ~5 false positives. FDR correction reduces this while maintaining good power
+        to detect real differences.
+
+        Args:
+            tests: List of test result dictionaries
+
+        Returns:
+            Updated list with corrected test statuses and FDR metadata
+        """
+        fdr_config = self.config.get('thresholds', {}).get('fdr_correction', {})
+
+        if not fdr_config.get('enabled', False):
+            return tests  # FDR correction disabled
+
+        method = fdr_config.get('method', 'bh')  # 'bh' or 'by'
+        alpha = fdr_config.get('alpha', 0.05)
+        apply_per_test_type = fdr_config.get('apply_per_test_type', True)
+
+        # Filter to only tests with p-values (excludes null_rate, psi, date_range, etc.)
+        tests_with_pvalues = [
+            (i, test) for i, test in enumerate(tests)
+            if 'p_value' in test.get('details', {}) and test.get('status') not in ['SKIP', 'ERROR']
+        ]
+
+        if len(tests_with_pvalues) <= 1:
+            logger.info("FDR correction skipped: only 0-1 tests with p-values")
+            return tests  # No correction needed for single test
+
+        logger.info(f"Applying FDR correction ({method}) to {len(tests_with_pvalues)} tests with p-values (α={alpha})")
+
+        # Group tests by test type if configured
+        if apply_per_test_type:
+            test_groups = {}
+            for idx, test in tests_with_pvalues:
+                test_name = test.get('test_name', 'unknown')
+                if test_name not in test_groups:
+                    test_groups[test_name] = []
+                test_groups[test_name].append((idx, test))
+        else:
+            # Single group: all tests together
+            test_groups = {'all': tests_with_pvalues}
+
+        # Apply FDR correction to each group
+        corrections_made = 0
+        for group_name, group_tests in test_groups.items():
+            if len(group_tests) <= 1:
+                continue  # Skip groups with only 1 test
+
+            # Extract p-values and indices
+            indices = [idx for idx, _ in group_tests]
+            p_values = [test.get('details', {}).get('p_value', 1.0) for _, test in group_tests]
+
+            # Apply FDR correction
+            # IMPORTANT: FDR only applies to tests that originally FAILED (p < alpha)
+            # We want to correct for false positives among failures, not re-evaluate passes
+            try:
+                # Only apply FDR to p-values from tests that originally failed
+                failed_indices = []
+                failed_pvalues = []
+
+                for i, (test_idx, test) in enumerate(group_tests):
+                    # For KS-test, T-test, Chi-square: low p-value = FAIL (reject null)
+                    # We only apply FDR to those that failed (p < alpha)
+                    if p_values[i] < alpha:
+                        failed_indices.append(i)
+                        failed_pvalues.append(p_values[i])
+
+                # If no tests failed, no FDR correction needed
+                if not failed_pvalues:
+                    logger.debug(f"Group {group_name}: No failed tests, skipping FDR")
+                    # Mark all as FDR-checked but unchanged
+                    for test_idx, test in group_tests:
+                        tests[test_idx]['details']['fdr_corrected'] = True
+                        tests[test_idx]['details']['fdr_method'] = method
+                        tests[test_idx]['details']['fdr_alpha'] = alpha
+                    continue
+
+                # Apply FDR correction only to failed tests
+                reject = false_discovery_control(failed_pvalues, method=method)
+
+            except Exception as e:
+                logger.warning(f"FDR correction failed for group {group_name}: {str(e)}")
+                continue
+
+            # Update test statuses based on FDR results
+            # Tests that originally passed remain passed
+            # Tests that originally failed may be corrected to pass
+            fdr_result_idx = 0
+            for i, (test_idx, test) in enumerate(group_tests):
+                original_status = test.get('status')
+
+                # If this test originally failed, check FDR result
+                if i in failed_indices:
+                    should_reject = reject[fdr_result_idx]
+                    fdr_result_idx += 1
+
+                    # FDR says: should we reject null hypothesis?
+                    # reject[i] = True → FAIL (distributions differ)
+                    # reject[i] = False → PASS (FDR correction says this was likely false positive)
+                    new_status = 'FAIL' if should_reject else 'PASS'
+                else:
+                    # Test originally passed (p >= alpha), keep it as PASS
+                    new_status = 'PASS'
+
+                if original_status != new_status:
+                    tests[test_idx]['status'] = new_status
+                    tests[test_idx]['details']['fdr_corrected'] = True
+                    tests[test_idx]['details']['fdr_original_status'] = original_status
+                    tests[test_idx]['details']['fdr_method'] = method
+                    tests[test_idx]['details']['fdr_alpha'] = alpha
+                    corrections_made += 1
+                    logger.debug(f"FDR changed {test.get('column', 'unknown')} {test.get('test_name')}: {original_status} → {new_status}")
+                else:
+                    # Status unchanged, but mark that FDR was applied
+                    tests[test_idx]['details']['fdr_corrected'] = True
+                    tests[test_idx]['details']['fdr_method'] = method
+                    tests[test_idx]['details']['fdr_alpha'] = alpha
+
+        if corrections_made > 0:
+            logger.info(f"FDR correction changed status of {corrections_made} test(s)")
+        else:
+            logger.info("FDR correction applied but no status changes")
+
+        return tests
+
     def _finalize_result(self, result: Dict[str, Any]):
         """Finalize comparison result with summary."""
         all_tests = result['tests']
+
+        # Apply FDR correction if enabled
+        all_tests = self._apply_fdr_correction(all_tests)
+        result['tests'] = all_tests
         failed_tests = [t for t in all_tests if t['status'] == 'FAIL']
         warning_tests = [t for t in all_tests if t['status'] == 'WARNING']
         passed_tests = [t for t in all_tests if t['status'] == 'PASS']
@@ -1010,15 +1313,28 @@ class TableComparator:
         print(f"\n{'='*60}")
         print(f"RESULT: {result['overall_status']}")
         print(f"Passed: {result['summary']['passed']}/{result['summary']['total_tests']}")
-        
+
         if result['summary']['warnings'] > 0:
             print(f"Warnings: {result['summary']['warnings']}")
-        
+
+        # Check if FDR correction was applied
+        fdr_corrected_tests = [t for t in result['tests'] if t.get('details', {}).get('fdr_corrected', False)]
+        if fdr_corrected_tests:
+            fdr_changed = [t for t in fdr_corrected_tests if 'fdr_original_status' in t.get('details', {})]
+            fdr_config = self.config.get('thresholds', {}).get('fdr_correction', {})
+            method = fdr_config.get('method', 'bh')
+            alpha = fdr_config.get('alpha', 0.05)
+            print(f"\n⚠️  FDR correction applied ({method.upper()}, α={alpha})")
+            print(f"   - Corrected {len(fdr_corrected_tests)} test(s) with p-values")
+            if fdr_changed:
+                print(f"   - Status changed for {len(fdr_changed)} test(s)")
+
         if result['summary']['failed'] > 0:
             failed = [t for t in result['tests'] if t['status'] == 'FAIL']
             print(f"\nFailed tests:")
             for t in failed:
                 col_info = f" on {t.get('column')}" if t.get('column') else ""
-                print(f"  - {t['test_name']}{col_info}")
-        
+                fdr_note = " (FDR-corrected)" if t.get('details', {}).get('fdr_corrected') else ""
+                print(f"  - {t['test_name']}{col_info}{fdr_note}")
+
         print(f"{'='*60}\n")

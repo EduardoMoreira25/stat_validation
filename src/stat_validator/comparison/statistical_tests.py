@@ -212,28 +212,29 @@ class StatisticalTests:
                     details={'reason': 'No data in one or both distributions'}
                 )
             
-            # Normalize to percentages
+            # Convert value column to string to handle type mismatches
             source_dist = source_dist.copy()
             dest_dist = dest_dist.copy()
-            
-            source_dist['pct'] = source_dist['cnt'] / source_dist['cnt'].sum()
-            dest_dist['pct'] = dest_dist['cnt'] / dest_dist['cnt'].sum()
-            
-            # Convert value column to string to handle type mismatches
             value_col = source_dist.columns[0]  # First column is the value column
             source_dist[value_col] = source_dist[value_col].astype(str)
             dest_dist[value_col] = dest_dist[value_col].astype(str)
-            
-            # Merge distributions
+
+            # Merge distributions to get all categories
             merged = source_dist.merge(
                 dest_dist,
                 on=value_col,
                 how='outer',
                 suffixes=('_src', '_dst')
             )
-            
-            # Fill missing values with small number to avoid log(0)
-            merged = merged.fillna(0.0001)
+
+            # Apply Laplace smoothing: add 1 to all counts (including missing categories)
+            # This prevents division by zero and log(0) while maintaining valid probability distributions
+            merged['cnt_src'] = merged['cnt_src'].fillna(0) + 1
+            merged['cnt_dst'] = merged['cnt_dst'].fillna(0) + 1
+
+            # Normalize to percentages AFTER smoothing
+            merged['pct_src'] = merged['cnt_src'] / merged['cnt_src'].sum()
+            merged['pct_dst'] = merged['cnt_dst'] / merged['cnt_dst'].sum()
             
             # Calculate PSI
             merged['psi_component'] = (

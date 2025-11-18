@@ -10,9 +10,6 @@ from .connectors.dremio_connector import DremioConnector
 from .connectors.hana_connector import HanaConnector
 from .comparison.comparator import TableComparator
 from .reporting.report_generator import ReportGenerator
-from .reporting.alerting import AlertManager
-from .profiling.profiler import TableProfiler
-from .profiling.profile_report_generator import ProfileReportGenerator
 
 
 @click.group()
@@ -22,114 +19,15 @@ def cli():
     pass
 
 
-@cli.command()
-@click.argument('source_table')
-@click.argument('dest_table')
-@click.option('--config', '-c', help='Path to config YAML file')
-@click.option('--env', '-e', help='Path to .env file')
-@click.option('--columns', '-col', multiple=True, help='Specific columns to test')
-@click.option('--output-dir', '-o', default='./reports', help='Output directory for reports')
-@click.option('--formats', '-f', multiple=True, default=['json', 'html'], 
-              help='Report formats (json, html, csv)')
-@click.option('--no-cache', is_flag=True, help='Skip DuckDB caching (direct queries)')
-@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def compare(
-    source_table: str,
-    dest_table: str,
-    config: Optional[str],
-    env: Optional[str],
-    columns: tuple,
-    output_dir: str,
-    formats: tuple,
-    no_cache: bool,
-    verbose: bool
-):
-    """
-    Compare two tables using statistical validation (same data source).
-    
-    Examples:
-    
-        # Basic comparison (Dremio to Dremio)
-        stat-validator compare schema.source_table schema.dest_table
-        
-        # With specific columns
-        stat-validator compare schema.source_table schema.dest_table -col col1 -col col2
-        
-        # Custom config and output
-        stat-validator compare schema.src schema.dst -c custom_config.yaml -o ./my_reports
-    """
-    try:
-        # Setup logging
-        log_level = 'DEBUG' if verbose else 'INFO'
-        logger = setup_logging()
-        logger.setLevel(log_level)
-        
-        click.echo(f"\n🔍 Statistical Validation Tool")
-        click.echo(f"{'='*60}\n")
-        
-        # Load configuration
-        click.echo("Loading configuration...")
-        config_loader = ConfigLoader(config_path=config, env_path=env)
-        app_config = config_loader.get_all()
-        
-        # Connect to Dremio (default)
-        click.echo("Connecting to Dremio...")
-        dremio_config = config_loader.get_dremio_config()
-        connector = DremioConnector(**dremio_config)
-        
-        # Run comparison (same connector for both source and dest)
-        click.echo(f"\nComparing tables:")
-        click.echo(f"  Source: {source_table}")
-        click.echo(f"  Destination: {dest_table}")
-        
-        comparator = TableComparator(connector, connector, app_config)
-        
-        columns_list = list(columns) if columns else None
-        result = comparator.compare(source_table, dest_table, columns_list)
-        
-        # Generate reports
-        click.echo(f"\nGenerating reports...")
-        report_gen = ReportGenerator(output_dir)
-        report_files = report_gen.generate_report(result, formats=list(formats))
-        
-        click.echo(f"\n✅ Reports generated:")
-        for fmt, path in report_files.items():
-            click.echo(f"  {fmt.upper()}: {path}")
-        
-        # Send alerts if configured
-        alerting_config = app_config.get('alerting', {})
-        if alerting_config.get('enabled', False):
-            click.echo(f"\nSending alerts...")
-            alert_manager = AlertManager(alerting_config)
-            alert_manager.send_alert(result, report_files)
-        
-        # Exit with appropriate code
-        if result['overall_status'] == 'FAIL':
-            click.echo(f"\n❌ Validation FAILED")
-            sys.exit(1)
-        elif result['overall_status'] == 'WARNING':
-            click.echo(f"\n⚠️  Validation completed with WARNINGS")
-            sys.exit(0)
-        else:
-            click.echo(f"\n✅ Validation PASSED")
-            sys.exit(0)
-    
-    except Exception as e:
-        click.echo(f"\n❌ Error: {str(e)}", err=True)
-        if verbose:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
-
-
 @cli.command('compare-cross')
 @click.argument('hana_table')
 @click.argument('dremio_table')
 @click.option('--config', '-c', help='Path to config YAML file')
 @click.option('--env', '-e', help='Path to .env file')
 @click.option('--columns', '-col', multiple=True, help='Specific columns to test')
+@click.option('--filter-date', '-d', help='Filter date for incremental validation (YYYY-MM-DD)')
 @click.option('--output-dir', '-o', default='./reports', help='Output directory for reports')
-@click.option('--formats', '-f', multiple=True, default=['json', 'html'], 
+@click.option('--formats', '-f', multiple=True, default=['json', 'html'],
               help='Report formats (json, html, csv)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
 def compare_cross(
@@ -138,15 +36,20 @@ def compare_cross(
     config: Optional[str],
     env: Optional[str],
     columns: tuple,
+    filter_date: Optional[str],
     output_dir: str,
     formats: tuple,
     verbose: bool
 ):
     """
     Compare HANA (source) to Dremio (destination).
-    
+
     Examples:
+        # Full table comparison
         stat-validator compare-cross '"SAP_RISE_1"."T_RISE_DFKKOP"' 'ulysses1.sapisu."rfn_dfkkop"' -v
+
+        # Incremental validation (filter by date)
+        stat-validator compare-cross '"SAP_RISE_1"."T_RISE_ADCP"' 'ulysses1.sapisu."rfn_adcp"' --filter-date 2025-11-04
     """
     try:
         # Setup logging
@@ -172,15 +75,38 @@ def compare_cross(
         dremio_config = config_loader.get_dremio_config()
         dest_connector = DremioConnector(**dremio_config)
         
+        # Build temporal filter WHERE clauses if filter_date is provided
+        source_where = None
+        dest_where = None
+
+        if filter_date:
+            click.echo(f"\n📅 Applying temporal filter: {filter_date}")
+            temporal_config = app_config.get('temporal_filters', {})
+
+            # Build SAP HANA WHERE clause
+            sap_config = temporal_config.get('sap', {})
+            sap_column = sap_config.get('column', 'REFRESH_DT')
+            sap_template = sap_config.get('sql_template', "TO_DATE({column}) = TO_DATE('{date}')")
+            source_where = sap_template.format(column=sap_column, date=filter_date)
+
+            # Build Dremio WHERE clause
+            dremio_config = temporal_config.get('dremio', {})
+            dremio_column = dremio_config.get('column', 'system_ts')
+            dremio_template = dremio_config.get('sql_template', "CAST({column} AS DATE) = DATE '{date}'")
+            dest_where = dremio_template.format(column=dremio_column, date=filter_date)
+
+            click.echo(f"  SAP filter: WHERE {source_where}")
+            click.echo(f"  Dremio filter: WHERE {dest_where}")
+
         # Run cross-source comparison
         click.echo(f"\nComparing tables (Cross-Source):")
         click.echo(f"  Source (HANA): {hana_table}")
         click.echo(f"  Destination (Dremio): {dremio_table}")
-        
+
         comparator = TableComparator(source_connector, dest_connector, app_config)
-        
+
         columns_list = list(columns) if columns else None
-        result = comparator.compare(hana_table, dremio_table, columns_list)
+        result = comparator.compare(hana_table, dremio_table, columns_list, source_where, dest_where)
         
         # Generate reports
         click.echo(f"\nGenerating reports...")
@@ -190,13 +116,6 @@ def compare_cross(
         click.echo(f"\n✅ Reports generated:")
         for fmt, path in report_files.items():
             click.echo(f"  {fmt.upper()}: {path}")
-        
-        # Send alerts if configured
-        alerting_config = app_config.get('alerting', {})
-        if alerting_config.get('enabled', False):
-            click.echo(f"\nSending alerts...")
-            alert_manager = AlertManager(alerting_config)
-            alert_manager.send_alert(result, report_files)
         
         # Exit with appropriate code
         if result['overall_status'] == 'FAIL':
@@ -217,249 +136,244 @@ def compare_cross(
         sys.exit(1)
 
 
-@cli.command()
-@click.argument('table_name')
-@click.option('--env', '-e', help='Path to .env file')
-@click.option('--source', '-s', type=click.Choice(['dremio', 'hana']), default='dremio',
-              help='Data source type (default: dremio)')
-def inspect(table_name: str, env: Optional[str], source: str):
-    """
-    Inspect a table's schema and basic statistics.
-    
-    Example:
-        stat-validator inspect schema.table_name
-        stat-validator inspect '"SCHEMA"."TABLE"' --source hana
-    """
-    try:
-        click.echo(f"\n🔍 Inspecting table: {table_name}\n")
-        
-        # Load config
-        config_loader = ConfigLoader(env_path=env)
-        
-        # Connect based on source type
-        if source == 'hana':
-            hana_config = config_loader.get_hana_config()
-            connector = HanaConnector(**hana_config)
-        else:
-            dremio_config = config_loader.get_dremio_config()
-            connector = DremioConnector(**dremio_config)
-        
-        # Get schema
-        schema = connector.get_table_schema(table_name)
-        row_count = connector.get_row_count(table_name)
-        
-        click.echo(f"Row Count: {row_count:,}\n")
-        click.echo("Schema:")
-        click.echo(f"{'Column':<30} {'Type':<20}")
-        click.echo("-" * 50)
-        
-        for field in schema:
-            click.echo(f"{field.name:<30} {str(field.type):<20}")
-        
-        click.echo()
-    
-    except Exception as e:
-        click.echo(f"❌ Error: {str(e)}", err=True)
-        sys.exit(1)
-
-
-@cli.command()
-def init():
-    """
-    Initialize a new validation project (create config files).
-    """
-    try:
-        click.echo("\n🚀 Initializing Statistical Validator project...\n")
-        
-        # Create directories
-        Path("config").mkdir(exist_ok=True)
-        Path("reports").mkdir(exist_ok=True)
-        Path("logs").mkdir(exist_ok=True)
-        
-        # Create .env.example if it doesn't exist
-        env_example = Path(".env.example")
-        if not env_example.exists():
-            env_content = """# Dremio Connection Settings
-DREMIO_HOSTNAME=your-dremio-hostname.com
-DREMIO_PORT=32010
-DREMIO_USERNAME=your_username
-DREMIO_PASSWORD=your_password
-DREMIO_PAT=your_personal_access_token_here
-DREMIO_TLS=true
-DREMIO_DISABLE_SERVER_VERIFICATION=true
-
-# SAP HANA Connection Settings
-HANA_HOST=your-hana-hostname.com
-HANA_PORT=30015
-HANA_USER=your_username
-HANA_PASSWORD=your_password
-HANA_SCHEMA=your_default_schema
-HANA_ENCRYPT=true
-HANA_SSL_VALIDATE=false
-
-# DuckDB Cache
-DUCKDB_CACHE_PATH=_validation_cache.duckdb
-
-# Reporting/Alerting (optional)
-ALERT_EMAIL=your-email@company.com
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@company.com
-SMTP_PASSWORD=your-app-password
-
-# Output Settings
-REPORTS_DIR=./reports
-LOG_LEVEL=INFO
-"""
-            env_example.write_text(env_content)
-            click.echo("✅ Created .env.example")
-        
-        click.echo("✅ Created directories: config/, reports/, logs/")
-        click.echo("\n📝 Next steps:")
-        click.echo("  1. Copy .env.example to .env and fill in your credentials")
-        click.echo("  2. Review config/config.yaml for threshold settings")
-        click.echo("  3. Run: stat-validator compare-cross <hana_table> <dremio_table>")
-        click.echo()
-    
-    except Exception as e:
-        click.echo(f"❌ Error: {str(e)}", err=True)
-        sys.exit(1)
-
-
-@cli.command()
-@click.option('--source', '-s', type=click.Choice(['dremio', 'hana', 'both']), default='both',
-              help='Which connection to test (default: both)')
-def test_connection(source: str):
-    """Test connection to data sources."""
-    try:
-        config_loader = ConfigLoader()
-        
-        if source in ['dremio', 'both']:
-            click.echo("\n🔌 Testing Dremio connection...\n")
-            dremio_config = config_loader.get_dremio_config()
-            click.echo(f"Hostname: {dremio_config['hostname']}")
-            click.echo(f"Port: {dremio_config['flightport']}")
-            click.echo(f"TLS: {dremio_config['tls']}")
-            
-            try:
-                connector = DremioConnector(**dremio_config)
-                result = connector.execute_query("SELECT 1 as test")
-                click.echo("✅ Dremio connection successful!")
-                click.echo(f"Test query result: {result.to_pandas()['test'].iloc[0]}\n")
-            except Exception as e:
-                click.echo(f"❌ Dremio connection failed: {str(e)}\n")
-        
-        if source in ['hana', 'both']:
-            click.echo("🔌 Testing SAP HANA connection...\n")
-            hana_config = config_loader.get_hana_config()
-            click.echo(f"Hostname: {hana_config['hostname']}")
-            click.echo(f"Port: {hana_config['port']}")
-            click.echo(f"Encrypt: {hana_config['encrypt']}")
-            
-            try:
-                connector = HanaConnector(**hana_config)
-                result = connector.execute_query("SELECT 1 as test FROM DUMMY")
-                click.echo("✅ SAP HANA connection successful!")
-                click.echo(f"Test query result: {result.to_pandas()['test'].iloc[0]}\n")
-            except Exception as e:
-                click.echo(f"❌ SAP HANA connection failed: {str(e)}\n")
-    
-    except Exception as e:
-        click.echo(f"\n❌ Error: {str(e)}", err=True)
-        sys.exit(1)
-
-
-@cli.command()
-@click.argument('table_name')
+@cli.command('key-count')
+@click.argument('hana_table')
+@click.argument('dremio_table')
+@click.argument('key_column')
 @click.option('--config', '-c', help='Path to config YAML file')
 @click.option('--env', '-e', help='Path to .env file')
-@click.option('--source', '-s', type=click.Choice(['dremio', 'hana']), default='hana',
-              help='Data source type (default: hana)')
-@click.option('--output-dir', '-o', default='./profiles', help='Output directory for profiles')
-@click.option('--formats', '-f', multiple=True, default=['json', 'html'],
-              help='Report formats (json, html)')
-@click.option('--sample-size', default=50000, help='Number of rows to sample')
+@click.option('--filter-date', '-d', help='Filter date for incremental validation (YYYY-MM-DD)')
+@click.option('--output-dir', '-o', default='./key_counts', help='Output directory for count results')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def profile(
-    table_name: str,
+def key_count(
+    hana_table: str,
+    dremio_table: str,
+    key_column: str,
     config: Optional[str],
     env: Optional[str],
-    source: str,
+    filter_date: Optional[str],
     output_dir: str,
-    formats: tuple,
-    sample_size: int,
     verbose: bool
 ):
     """
-    Generate statistical profile for a table.
+    Compare value counts for a key column between HANA and Dremio.
 
-    This command analyzes a table and generates a comprehensive statistical
-    profile including metrics for numerical, categorical, and temporal columns.
+    This counts how many times each distinct value appears in the key column
+    and compares the distributions between source and destination.
 
     Examples:
+        # Compare OPBEL counts between HANA and Dremio
+        stat-validator key-count '"SAP_RISE_1"."T_RISE_DFKKOP"' 'ulysses1.sapisu."rfn_dfkkop"' OPBEL --filter-date 2025-11-12
 
-        # Profile a HANA table (default)
-        stat-validator profile '"SAPISU"."rfn_adcp"'
-
-        # Profile a Dremio table
-        stat-validator profile 'ulysses1.schema."table_name"' --source dremio
-
-        # Specify output directory and sample size
-        stat-validator profile '"SCHEMA"."TABLE"' -o ./my_profiles --sample-size 100000
-
-        # Generate only JSON format
-        stat-validator profile '"SCHEMA"."TABLE"' -f json
+        # Compare PARTNER counts
+        stat-validator key-count '"SAP_RISE_1"."T_RISE_ADCP"' 'ulysses1.sapisu."rfn_adcp"' PARTNER -d 2025-11-12
     """
     try:
-        # Setup logging
-        import logging
-        log_level = logging.DEBUG if verbose else logging.INFO
-        logger = setup_logging(default_level=log_level)
+        import pandas as pd
+        from datetime import datetime
 
-        click.echo(f"\n🔍 Statistical Profile Generation")
+        # Setup logging
+        log_level = 'DEBUG' if verbose else 'INFO'
+        logger = setup_logging()
+        logger.setLevel(log_level)
+
+        click.echo(f"\n🔑 Key Column Count Comparison")
         click.echo(f"{'='*60}\n")
+        click.echo(f"Key column: {key_column}")
 
         # Load configuration
+        click.echo("Loading configuration...")
         config_loader = ConfigLoader(config_path=config, env_path=env)
+        app_config = config_loader.get_all()
 
-        # Connect to data source
-        click.echo(f"Connecting to {source.upper()}...")
-        if source == 'hana':
-            hana_config = config_loader.get_hana_config()
-            connector = HanaConnector(**hana_config)
+        # Connect to SAP HANA (SOURCE)
+        click.echo("Connecting to SAP HANA (source)...")
+        hana_config = config_loader.get_hana_config()
+        source_connector = HanaConnector(**hana_config)
+
+        # Connect to Dremio (DESTINATION)
+        click.echo("Connecting to Dremio (destination)...")
+        dremio_config = config_loader.get_dremio_config()
+        dest_connector = DremioConnector(**dremio_config)
+
+        # Build temporal filter WHERE clauses if filter_date is provided
+        source_where = None
+        dest_where = None
+
+        if filter_date:
+            click.echo(f"\n📅 Applying temporal filter: {filter_date}")
+            temporal_config = app_config.get('temporal_filters', {})
+
+            # Build SAP HANA WHERE clause
+            sap_config = temporal_config.get('sap', {})
+            sap_column = sap_config.get('column', 'REFRESH_DT')
+            sap_template = sap_config.get('sql_template', "TO_DATE({column}) = TO_DATE('{date}')")
+            source_where = sap_template.format(column=sap_column, date=filter_date)
+
+            # Build Dremio WHERE clause
+            dremio_config_filter = temporal_config.get('dremio', {})
+            dremio_column = dremio_config_filter.get('column', 'system_ts')
+            dremio_template = dremio_config_filter.get('sql_template', "CAST({column} AS DATE) = DATE '{date}'")
+            dest_where = dremio_template.format(column=dremio_column, date=filter_date)
+
+            click.echo(f"  SAP filter: WHERE {source_where}")
+            click.echo(f"  Dremio filter: WHERE {dest_where}")
+
+        # Build count queries
+        # SAP HANA uses uppercase column names
+        source_col = key_column.upper()
+        # Dremio uses lowercase column names
+        dest_col = key_column.lower()
+
+        click.echo(f"\n📊 Counting distinct values...")
+        click.echo(f"  HANA column: {source_col}")
+        click.echo(f"  Dremio column: {dest_col}")
+
+        # Build HANA query
+        source_query = f'''
+            SELECT "{source_col}", COUNT(*) as row_count
+            FROM {hana_table}
+        '''
+        if source_where:
+            source_query += f" WHERE {source_where}"
+        source_query += f' GROUP BY "{source_col}" ORDER BY row_count DESC'
+
+        # Build Dremio query
+        dest_query = f'''
+            SELECT "{dest_col}", COUNT(*) as row_count
+            FROM {dremio_table}
+        '''
+        if dest_where:
+            dest_query += f" WHERE {dest_where}"
+        dest_query += f' GROUP BY "{dest_col}" ORDER BY row_count DESC'
+
+        # Execute queries
+        click.echo("\n  Fetching counts from HANA...")
+        if verbose:
+            click.echo(f"    Query: {source_query}")
+        source_data = source_connector.execute_query(source_query)
+        source_df = source_data.to_pandas()
+        source_df.columns = ['key_value', 'hana_count']
+
+        click.echo("  Fetching counts from Dremio...")
+        if verbose:
+            click.echo(f"    Query: {dest_query}")
+        dest_data = dest_connector.execute_query(dest_query)
+        dest_df = dest_data.to_pandas()
+        dest_df.columns = ['key_value', 'dremio_count']
+
+        # Convert key_value to string for comparison (handles different types)
+        source_df['key_value'] = source_df['key_value'].astype(str)
+        dest_df['key_value'] = dest_df['key_value'].astype(str)
+
+        click.echo(f"\n📊 Results:")
+        click.echo(f"  Unique values in HANA: {len(source_df):,}")
+        click.echo(f"  Unique values in Dremio: {len(dest_df):,}")
+        click.echo(f"  Total rows in HANA: {source_df['hana_count'].sum():,}")
+        click.echo(f"  Total rows in Dremio: {dest_df['dremio_count'].sum():,}")
+
+        # Merge the dataframes
+        merged_df = pd.merge(source_df, dest_df, on='key_value', how='outer', indicator=True)
+        merged_df['hana_count'] = merged_df['hana_count'].fillna(0).astype(int)
+        merged_df['dremio_count'] = merged_df['dremio_count'].fillna(0).astype(int)
+        merged_df['difference'] = merged_df['dremio_count'] - merged_df['hana_count']
+        merged_df['match'] = merged_df['hana_count'] == merged_df['dremio_count']
+
+        # Identify differences
+        only_in_hana = merged_df[merged_df['_merge'] == 'left_only']
+        only_in_dremio = merged_df[merged_df['_merge'] == 'right_only']
+        in_both = merged_df[merged_df['_merge'] == 'both']
+        count_mismatch = in_both[in_both['difference'] != 0]
+        perfect_match = in_both[in_both['difference'] == 0]
+
+        click.echo(f"\n🔍 Comparison Summary:")
+        click.echo(f"  Values in both tables: {len(in_both):,}")
+        click.echo(f"    - Perfect match (same count): {len(perfect_match):,}")
+        click.echo(f"    - Count mismatch: {len(count_mismatch):,}")
+        click.echo(f"  Values only in HANA: {len(only_in_hana):,}")
+        click.echo(f"  Values only in Dremio: {len(only_in_dremio):,}")
+
+        # Create output directory
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        # Generate filenames
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        source_name = hana_table.replace('"', '').replace('.', '_')
+        dest_name = dremio_table.replace('"', '').replace('.', '_')
+        prefix = f"key_count_{source_name}_to_{dest_name}_{key_column}_{timestamp}"
+
+        # Save full comparison
+        comparison_file = Path(output_dir) / f"{prefix}_comparison.csv"
+        output_df = merged_df[['key_value', 'hana_count', 'dremio_count', 'difference', 'match']].copy()
+        output_df = output_df.sort_values('difference', key=abs, ascending=False)
+        output_df.to_csv(comparison_file, index=False)
+        click.echo(f"\n✅ Full comparison saved to: {comparison_file}")
+
+        # Show top mismatches
+        if len(count_mismatch) > 0:
+            click.echo(f"\n⚠️  Top 10 count mismatches:")
+            top_mismatches = count_mismatch.nlargest(10, 'difference', keep='all')[['key_value', 'hana_count', 'dremio_count', 'difference']]
+            click.echo(top_mismatches.to_string(index=False))
+
+            # Save mismatches
+            mismatch_file = Path(output_dir) / f"{prefix}_mismatches.csv"
+            count_mismatch[['key_value', 'hana_count', 'dremio_count', 'difference']].to_csv(mismatch_file, index=False)
+            click.echo(f"\n✅ All mismatches saved to: {mismatch_file}")
+
+        # Show values only in HANA
+        if len(only_in_hana) > 0:
+            click.echo(f"\n⚠️  Sample of values only in HANA (top 10 by count):")
+            top_hana = only_in_hana.nlargest(10, 'hana_count', keep='all')[['key_value', 'hana_count']]
+            click.echo(top_hana.to_string(index=False))
+
+            only_hana_file = Path(output_dir) / f"{prefix}_only_in_hana.csv"
+            only_in_hana[['key_value', 'hana_count']].to_csv(only_hana_file, index=False)
+            click.echo(f"\n✅ Values only in HANA saved to: {only_hana_file}")
+
+        # Show values only in Dremio
+        if len(only_in_dremio) > 0:
+            click.echo(f"\n⚠️  Sample of values only in Dremio (top 10 by count):")
+            top_dremio = only_in_dremio.nlargest(10, 'dremio_count', keep='all')[['key_value', 'dremio_count']]
+            click.echo(top_dremio.to_string(index=False))
+
+            only_dremio_file = Path(output_dir) / f"{prefix}_only_in_dremio.csv"
+            only_in_dremio[['key_value', 'dremio_count']].to_csv(only_dremio_file, index=False)
+            click.echo(f"\n✅ Values only in Dremio saved to: {only_dremio_file}")
+
+        # Save summary
+        summary = {
+            'source_table': hana_table,
+            'dest_table': dremio_table,
+            'key_column': key_column,
+            'filter_date': filter_date,
+            'timestamp': datetime.now().isoformat(),
+            'unique_values_hana': int(len(source_df)),
+            'unique_values_dremio': int(len(dest_df)),
+            'total_rows_hana': int(source_df['hana_count'].sum()),
+            'total_rows_dremio': int(dest_df['dremio_count'].sum()),
+            'values_in_both': int(len(in_both)),
+            'perfect_match_count': int(len(perfect_match)),
+            'count_mismatch_count': int(len(count_mismatch)),
+            'only_in_hana_count': int(len(only_in_hana)),
+            'only_in_dremio_count': int(len(only_in_dremio)),
+            'match_rate': float(len(perfect_match) / len(merged_df) * 100) if len(merged_df) > 0 else 0
+        }
+
+        import json
+        summary_file = Path(output_dir) / f"{prefix}_summary.json"
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=2)
+
+        click.echo(f"\n📄 Summary saved to: {summary_file}")
+        click.echo(f"\n✅ Key column count comparison complete!")
+
+        # Exit with appropriate code
+        if len(count_mismatch) > 0 or len(only_in_hana) > 0 or len(only_in_dremio) > 0:
+            click.echo(f"\n⚠️  Differences found!")
+            sys.exit(1)
         else:
-            dremio_config = config_loader.get_dremio_config()
-            connector = DremioConnector(**dremio_config)
-
-        click.echo("✅ Connected\n")
-
-        # Initialize profiler
-        profiler = TableProfiler(
-            connector=connector,
-            sample_size=sample_size
-        )
-
-        # Generate profile
-        profile = profiler.profile_table(table_name)
-
-        # Generate reports
-        click.echo(f"\nGenerating reports...")
-        report_gen = ProfileReportGenerator(output_dir)
-        report_files = report_gen.generate_report(profile, formats=list(formats))
-
-        click.echo(f"\n✅ Profile reports generated:")
-        for fmt, path in report_files.items():
-            click.echo(f"  {fmt.upper()}: {path}")
-
-        click.echo(f"\n📊 Profile Summary:")
-        click.echo(f"  Table: {profile['metadata']['table_name']}")
-        click.echo(f"  Rows: {profile['metadata']['row_count']:,}" if profile['metadata']['row_count'] else "  Rows: Unknown")
-        click.echo(f"  Columns: {profile['metadata']['column_count']}")
-        click.echo(f"  Completeness: {profile['table_metrics']['completeness_percentage']}%")
-        click.echo()
-
-        sys.exit(0)
+            click.echo(f"\n✅ All key values match perfectly!")
+            sys.exit(0)
 
     except Exception as e:
         click.echo(f"\n❌ Error: {str(e)}", err=True)
