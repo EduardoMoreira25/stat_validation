@@ -91,8 +91,8 @@ def compare_cross(
 
             # Build Dremio WHERE clause
             dremio_config = temporal_config.get('dremio', {})
-            dremio_column = dremio_config.get('column', 'system_ts')
-            dremio_template = dremio_config.get('sql_template', "CAST({column} AS DATE) = DATE '{date}'")
+            dremio_column = dremio_config.get('column', 'refresh_dt')
+            dremio_template = dremio_config.get('sql_template', "TO_DATE({column} / 1000) = DATE '{date}'")
             dest_where = dremio_template.format(column=dremio_column, date=filter_date)
 
             click.echo(f"  SAP filter: WHERE {source_where}")
@@ -212,8 +212,8 @@ def key_count(
 
             # Build Dremio WHERE clause
             dremio_config_filter = temporal_config.get('dremio', {})
-            dremio_column = dremio_config_filter.get('column', 'system_ts')
-            dremio_template = dremio_config_filter.get('sql_template', "CAST({column} AS DATE) = DATE '{date}'")
+            dremio_column = dremio_config_filter.get('column', 'refresh_dt')
+            dremio_template = dremio_config_filter.get('sql_template', "TO_DATE({column} / 1000) = DATE '{date}'")
             dest_where = dremio_template.format(column=dremio_column, date=filter_date)
 
             click.echo(f"  SAP filter: WHERE {source_where}")

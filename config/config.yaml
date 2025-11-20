@@ -92,5 +92,5 @@ temporal_filters:
 
   # Dremio temporal column configuration
   dremio:
-    column: "system_ts"             # Column name in Dremio tables (ETL timestamp)
-    sql_template: "CAST({column} AS DATE) = DATE '{date}'"  # SQL filter template
+    column: "refresh_dt"            # Column name in Dremio tables (Unix millisecond timestamp)
+    sql_template: "TO_DATE({column} / 1000) = DATE '{date}'"  # SQL filter template (converts ms to seconds)

@@ -73,7 +73,7 @@ def extract_table_names(source_table: str, dest_table: str) -> tuple:
     # SAP: "SAP_RISE_1"."T_RISE_DFKKOP" -> T_RISE_DFKKOP
     sap_name = source_table.split('.')[-1].replace('"', '')
 
-    # Dremio: ulysses.sapisu."rfn_dfkkop" -> rfn_dfkkop
+    # Dremio: ulysses1.sapisu."rfn_dfkkop" -> rfn_dfkkop
     dremio_name = dest_table.split('.')[-1].replace('"', '')
 
     return sap_name, dremio_name
@@ -243,7 +243,7 @@ def read_tables_csv(csv_path: Path) -> List[Tuple[str, str, str, str]]:
         reader = csv.DictReader(f)
         for row in reader:
             dremio_schema = row['schema']
-            dremio_table = row['Ulysses']
+            dremio_table = row['ulysses1']
             sap_schema = row['schema.1']
             sap_table = row['SAP EIM']
 
@@ -260,7 +260,7 @@ def validate_table(
     filter_date: str,
     report_dir: Path,
     log_dir: Path,
-    dremio_prefix: str = "ulysses"
+    dremio_prefix: str = "ulysses1"
 ) -> dict:
     """
     Run validation for a single table.
@@ -371,7 +371,7 @@ def validate_table(
 def run_bulk_validation(
     csv_path: Path,
     filter_date: str,
-    dremio_prefix: str = "ulysses",
+    dremio_prefix: str = "ulysses1",
     parallel: int = 1
 ):
     """Run bulk validation for all tables in CSV."""
@@ -585,7 +585,7 @@ Examples:
   python scripts/bulk_validate_sapisu.py --filter-date 2025-10-18 --parallel 4
 
   # Use different Dremio prefix
-  python scripts/bulk_validate_sapisu.py --filter-date 2025-10-18 --dremio-prefix ulysses2
+  python scripts/bulk_validate_sapisu.py --filter-date 2025-10-18 --dremio-prefix ulysses12
         """
     )
 
@@ -603,8 +603,8 @@ Examples:
 
     parser.add_argument(
         '--dremio-prefix',
-        default='ulysses',
-        help='Dremio catalog prefix (default: ulysses)'
+        default='ulysses1',
+        help='Dremio catalog prefix (default: ulysses1)'
     )
 
     parser.add_argument(
