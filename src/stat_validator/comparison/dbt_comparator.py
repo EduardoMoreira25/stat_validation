@@ -7,6 +7,7 @@ Compares SAP source tables (with DBT filters applied) against Dremio refined tab
 import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
+from datetime import datetime
 import pyarrow as pa
 
 from ..connectors.dremio_connector import DremioConnector
@@ -30,8 +31,8 @@ class ColumnStats:
 class TableStats:
     """Statistics for a table."""
     row_count: int
-    min_refresh_dt: Optional[str]
-    max_refresh_dt: Optional[str]
+    min_refresh_dt: Optional[datetime]
+    max_refresh_dt: Optional[datetime]
     column_stats: List[ColumnStats]
 
 
@@ -238,8 +239,31 @@ class DBTComparator:
         max_key = col_mapping.get('max_refresh_dt', 'max_refresh_dt')
 
         row_count = int(row[row_count_key][0]) if row[row_count_key][0] is not None else 0
-        min_refresh_dt = str(row[min_key][0]) if row[min_key][0] is not None else None
-        max_refresh_dt = str(row[max_key][0]) if row[max_key][0] is not None else None
+
+        # Parse dates to datetime objects for proper comparison
+        min_refresh_dt = None
+        if row[min_key][0] is not None:
+            min_val = row[min_key][0]
+            if isinstance(min_val, datetime):
+                min_refresh_dt = min_val
+            else:
+                # Parse string to datetime (handle various formats)
+                try:
+                    min_refresh_dt = datetime.fromisoformat(str(min_val).replace(' ', 'T').split('.')[0])
+                except:
+                    min_refresh_dt = None
+
+        max_refresh_dt = None
+        if row[max_key][0] is not None:
+            max_val = row[max_key][0]
+            if isinstance(max_val, datetime):
+                max_refresh_dt = max_val
+            else:
+                # Parse string to datetime (handle various formats)
+                try:
+                    max_refresh_dt = datetime.fromisoformat(str(max_val).replace(' ', 'T').split('.')[0])
+                except:
+                    max_refresh_dt = None
 
         # Extract column null statistics
         column_stats = []
@@ -289,11 +313,19 @@ class DBTComparator:
                 f"Dremio={dremio_stats.row_count}, diff={row_count_diff_pct:.2f}%"
             )
 
-        # Compare refresh_dt ranges
-        refresh_dt_match = (
-            sap_stats.min_refresh_dt == dremio_stats.min_refresh_dt and
-            sap_stats.max_refresh_dt == dremio_stats.max_refresh_dt
-        )
+        # Compare refresh_dt ranges (compare dates ignoring microseconds)
+        refresh_dt_match = True
+        if sap_stats.min_refresh_dt and dremio_stats.min_refresh_dt:
+            # Truncate to seconds for comparison (ignore microseconds)
+            sap_min = sap_stats.min_refresh_dt.replace(microsecond=0)
+            dremio_min = dremio_stats.min_refresh_dt.replace(microsecond=0)
+            sap_max = sap_stats.max_refresh_dt.replace(microsecond=0) if sap_stats.max_refresh_dt else None
+            dremio_max = dremio_stats.max_refresh_dt.replace(microsecond=0) if dremio_stats.max_refresh_dt else None
+
+            refresh_dt_match = (sap_min == dremio_min and sap_max == dremio_max)
+        else:
+            # If either is None, consider it a mismatch
+            refresh_dt_match = (sap_stats.min_refresh_dt == dremio_stats.min_refresh_dt == None)
 
         if not refresh_dt_match:
             issues.append(
@@ -355,6 +387,10 @@ class DBTComparator:
 
     def to_dict(self, result: ComparisonResult) -> Dict[str, Any]:
         """Convert ComparisonResult to dictionary for JSON serialization."""
+        # Helper function to convert datetime to ISO string
+        def dt_to_str(dt):
+            return dt.isoformat() if dt else None
+
         return {
             'table_name': result.table_name,
             'year': result.year,
@@ -366,14 +402,14 @@ class DBTComparator:
             'refresh_dt_match': result.refresh_dt_match,
             'sap_stats': {
                 'row_count': result.sap_stats.row_count,
-                'min_refresh_dt': result.sap_stats.min_refresh_dt,
-                'max_refresh_dt': result.sap_stats.max_refresh_dt,
+                'min_refresh_dt': dt_to_str(result.sap_stats.min_refresh_dt),
+                'max_refresh_dt': dt_to_str(result.sap_stats.max_refresh_dt),
                 'column_null_stats': [asdict(col) for col in result.sap_stats.column_stats]
             },
             'dremio_stats': {
                 'row_count': result.dremio_stats.row_count,
-                'min_refresh_dt': result.dremio_stats.min_refresh_dt,
-                'max_refresh_dt': result.dremio_stats.max_refresh_dt,
+                'min_refresh_dt': dt_to_str(result.dremio_stats.min_refresh_dt),
+                'max_refresh_dt': dt_to_str(result.dremio_stats.max_refresh_dt),
                 'column_null_stats': [asdict(col) for col in result.dremio_stats.column_stats]
             },
             'null_comparison': result.null_comparison,

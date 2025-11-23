@@ -83,8 +83,15 @@ def format_text_report(result) -> str:
     lines.append("-" * 80)
     lines.append("REFRESH DATE RANGE COMPARISON")
     lines.append("-" * 80)
-    lines.append(f"SAP Source:      [{result.sap_stats.min_refresh_dt} to {result.sap_stats.max_refresh_dt}]")
-    lines.append(f"Dremio Refined:  [{result.dremio_stats.min_refresh_dt} to {result.dremio_stats.max_refresh_dt}]")
+
+    # Format datetime objects for display
+    sap_min = result.sap_stats.min_refresh_dt.strftime('%Y-%m-%d %H:%M:%S') if result.sap_stats.min_refresh_dt else 'None'
+    sap_max = result.sap_stats.max_refresh_dt.strftime('%Y-%m-%d %H:%M:%S') if result.sap_stats.max_refresh_dt else 'None'
+    dremio_min = result.dremio_stats.min_refresh_dt.strftime('%Y-%m-%d %H:%M:%S') if result.dremio_stats.min_refresh_dt else 'None'
+    dremio_max = result.dremio_stats.max_refresh_dt.strftime('%Y-%m-%d %H:%M:%S') if result.dremio_stats.max_refresh_dt else 'None'
+
+    lines.append(f"SAP Source:      [{sap_min} to {sap_max}]")
+    lines.append(f"Dremio Refined:  [{dremio_min} to {dremio_max}]")
     lines.append(f"Match:           {'YES' if result.refresh_dt_match else 'NO'}")
     lines.append("")
 
@@ -176,9 +183,9 @@ def main():
     config_loader = ConfigLoader(args.config)
     config = config_loader.get_all()
 
-    # Create output directory
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(exist_ok=True)
+    # Create output directory with hierarchical structure: sap/year/month
+    output_dir = Path(args.output_dir) / "sap" / str(args.year) / f"{args.month:02d}"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load table mappings
     csv_path = Path(args.csv)
