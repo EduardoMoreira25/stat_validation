@@ -1,0 +1,77 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_vbak
+Period: 2025-10
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      1,319
+Dremio Refined:  2,243
+Difference:      924 (70.05%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-10-18 15:10:40.465000 to 2025-10-31 18:38:49.568000]
+Dremio Refined:  [2025-10-18 15:10:40 to 2025-10-31 18:38:49]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+_dataaging                                     0.00     100.00       NO
+abhob                                          0.00     100.00       NO
+abhod                                          0.00     100.00       NO
+abhov                                          0.00     100.00       NO
+angdt                                          0.00     100.00       NO
+bnddt                                          0.00     100.00       NO
+cmfre                                          0.00     100.00       NO
+cmngv                                          0.00     100.00       NO
+cmnup                                          0.00     100.00       NO
+dat_fzau                                       0.00     100.00       NO
+fmbdat                                         0.00     100.00       NO
+fsh_candate                                    0.00     100.00       NO
+gwldt                                          0.00     100.00       NO
+mahdt                                          0.00     100.00       NO
+psm_budat                                      0.00     100.00       NO
+zabdath                                        0.00     100.00       NO
+aedat                                          0.00      94.69       NO
+vdatu                                          0.00      77.71       NO
+guebg                                          0.00      22.29       NO
+gueen                                          0.00      22.29       NO
+
+(206 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=1319, Dremio=2243, diff=70.05%
+  - Refresh date range mismatch: SAP=[2025-10-18 15:10:40.465000 to 2025-10-31 18:38:49.568000], Dremio=[2025-10-18 15:10:40 to 2025-10-31 18:38:49]
+  - Null percentage mismatch for _dataaging: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for abhob: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for abhod: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for abhov: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=94.69%
+  - Null percentage mismatch for angdt: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for bnddt: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for cmfre: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for cmngv: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for cmnup: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for dat_fzau: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for fmbdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for fsh_candate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for guebg: SAP=0.00%, Dremio=22.29%
+  - Null percentage mismatch for gueen: SAP=0.00%, Dremio=22.29%
+  - Null percentage mismatch for gwldt: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for mahdt: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for psm_budat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vdatu: SAP=0.00%, Dremio=77.71%
+  - Null percentage mismatch for zabdath: SAP=0.00%, Dremio=100.00%
+
+================================================================================

@@ -1,0 +1,57 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_vbkd
+Period: 2025-10
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      96,803
+Dremio Refined:  95,138
+Difference:      1,665 (1.72%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-10-18 15:12:43.199000 to 2025-10-31 18:38:49.569000]
+Dremio Refined:  [2025-10-18 15:12:43 to 2025-10-18 16:19:25]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+_dataaging                                     0.00     100.00       NO
+acdatv                                         0.00     100.00       NO
+bstdk                                          0.00     100.00       NO
+bstdk_e                                        0.00     100.00       NO
+fbuda                                          0.00     100.00       NO
+j_1aidatep                                     0.00     100.00       NO
+perfk                                          0.00     100.00       NO
+valdt                                          0.00     100.00       NO
+campaign                                       0.00        N/A       NO
+inco2_key                                      0.00        N/A       NO
+inco3_key                                      0.00        N/A       NO
+inco4_key                                      0.00        N/A       NO
+
+(93 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=96803, Dremio=95138, diff=1.72%
+  - Refresh date range mismatch: SAP=[2025-10-18 15:12:43.199000 to 2025-10-31 18:38:49.569000], Dremio=[2025-10-18 15:12:43 to 2025-10-18 16:19:25]
+  - Null percentage mismatch for _dataaging: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for acdatv: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for bstdk: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for bstdk_e: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for fbuda: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for j_1aidatep: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for perfk: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for valdt: SAP=0.00%, Dremio=100.00%
+
+================================================================================

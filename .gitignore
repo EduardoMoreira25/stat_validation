@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 
+repos/
+
 # DuckDB Cache Files
 *.duckdb
 *.duckdb.wal

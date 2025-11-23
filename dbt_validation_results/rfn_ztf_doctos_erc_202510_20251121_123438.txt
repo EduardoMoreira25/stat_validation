@@ -1,0 +1,39 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_ztf_doctos_erc
+Period: 2025-10
+Status: PASS
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      0
+Dremio Refined:  0
+Difference:      0 (0.00%)
+Match:           YES
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [None to None]
+Dremio Refined:  [None to None]
+Match:           YES
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+account_id                                     0.00        N/A       NO
+data_envio                                     0.00        N/A       NO
+data_estado                                    0.00        N/A       NO
+data_processamento                             0.00        N/A       NO
+data_referencia                                0.00        N/A       NO
+date_account                                   0.00        N/A       NO
+num_processo                                    N/A       0.00       NO
+vtref                                          0.00        N/A       NO
+
+(13 columns with matching null percentages)
+
+================================================================================
