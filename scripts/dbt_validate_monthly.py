@@ -27,6 +27,7 @@ from src.stat_validator.connectors.hana_connector import HanaConnector
 from src.stat_validator.comparison.dbt_comparator import DBTComparator
 from src.stat_validator.parsers.dbt_sql_parser import DBTSQLParser
 from src.stat_validator.utils.config_loader import ConfigLoader
+from src.stat_validator.reporting.excel_generator import ExcelGenerator
 
 
 # Configure logging
@@ -219,6 +220,7 @@ def main():
 
     # Run validations
     results = []
+    daily_breakdowns = {}
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     for table_info in tables:
@@ -254,6 +256,28 @@ def main():
                 json.dump(comparator.to_dict(result), f, indent=2)
             logger.info(f"  JSON report: {json_file}")
 
+            # Get daily breakdown for Excel report
+            try:
+                logger.info(f"  Fetching daily breakdown...")
+                daily_breakdown = comparator.get_daily_breakdown(
+                    dremio_schema=table_info['dremio_schema'],
+                    dremio_table=table_info['dremio_table'],
+                    sap_schema=table_info['sap_schema'],
+                    sap_table=table_info['sap_table'],
+                    year=args.year,
+                    month=args.month
+                )
+                daily_breakdowns[table_name] = daily_breakdown
+            except Exception as e:
+                logger.warning(f"  Could not fetch daily breakdown: {e}")
+                # Continue even if daily breakdown fails
+                daily_breakdowns[table_name] = {
+                    'table_name': table_name,
+                    'year': args.year,
+                    'month': args.month,
+                    'daily_data': []
+                }
+
         except Exception as e:
             logger.error(f"Error validating {table_info['dremio_table']}: {e}", exc_info=True)
             continue
@@ -273,11 +297,29 @@ def main():
             f.write("-" * 80 + "\n")
             f.write(f"{'Table':<40} {'Status':>10} {'Row Diff %':>15}\n")
             f.write("-" * 80 + "\n")
-            for result in results:
+            # Sort by absolute row difference percentage (largest first)
+            sorted_results = sorted(results, key=lambda r: abs(r.row_count_diff_pct), reverse=True)
+            for result in sorted_results:
                 f.write(f"{result.table_name:<40} {result.overall_status:>10} {result.row_count_diff_pct:>14.2f}%\n")
             f.write("=" * 80 + "\n")
 
         logger.info(f"\nSummary report: {summary_file}")
+
+        # Generate Excel report with summary and daily breakdowns
+        try:
+            excel_file = output_dir / f"summary_{args.year}{args.month:02d}_{timestamp}.xlsx"
+            logger.info(f"\nGenerating Excel report...")
+            excel_generator = ExcelGenerator()
+            excel_generator.generate_validation_report(
+                output_path=excel_file,
+                results=results,
+                daily_breakdowns=daily_breakdowns,
+                year=args.year,
+                month=args.month
+            )
+            logger.info(f"Excel report: {excel_file}")
+        except Exception as e:
+            logger.error(f"Error generating Excel report: {e}", exc_info=True)
 
     # Close connectors
     dremio_connector.close()

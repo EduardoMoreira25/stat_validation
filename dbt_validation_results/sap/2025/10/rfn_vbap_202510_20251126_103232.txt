@@ -1,0 +1,73 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_vbap
+Period: 2025-10
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      1,788
+Dremio Refined:  2,568
+Difference:      780 (43.62%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-10-18 15:11:32 to 2025-10-31 18:38:49]
+Dremio Refined:  [2025-10-18 15:11:32 to 2025-10-31 18:38:49]
+Match:           YES
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+_dataaging                                     0.00     100.00       NO
+abdat                                          0.00     100.00       NO
+cmtd_deliv_creadate                            0.00     100.00       NO
+cmtd_deliv_date                                0.00     100.00       NO
+discontinued_date                              0.00     100.00       NO
+dmbe_paymentdeemed                              N/A     100.00       NO
+dmbe_posteddate                                 N/A     100.00       NO
+fixmg                                          0.00     100.00       NO
+fsh_candate                                    0.00     100.00       NO
+handoverdate                                   0.00     100.00       NO
+j_3gdatbi                                      0.00     100.00       NO
+j_3gdatvo                                      0.00     100.00       NO
+lmd_scheduled_delivery_date                    0.00     100.00       NO
+prodh_univ_batdet_det_origin                   0.00     100.00       NO
+prodh_univ_sales_det_origin                    0.00     100.00       NO
+stadat                                         0.00     100.00       NO
+stdat                                          0.00     100.00       NO
+aedat                                          0.00      93.22       NO
+vdatu_ana                                      0.00      80.53       NO
+_dmbe_accounting_type                          0.00        N/A       NO
+
+(406 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=1788, Dremio=2568, diff=43.62%
+  - Null percentage mismatch for _dataaging: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for abdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=93.22%
+  - Null percentage mismatch for cmtd_deliv_creadate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for cmtd_deliv_date: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for discontinued_date: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for fixmg: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for fsh_candate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for handoverdate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for j_3gdatbi: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for j_3gdatvo: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for lmd_scheduled_delivery_date: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for prodh_univ_batdet_det_origin: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for prodh_univ_sales_det_origin: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for stadat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for stdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vdatu_ana: SAP=0.00%, Dremio=80.53%
+
+================================================================================

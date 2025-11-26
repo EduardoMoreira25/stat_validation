@@ -1,0 +1,51 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_ztm_comctr_head
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      36,953
+Dremio Refined:  36,845
+Difference:      108 (0.29%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 00:00:34 to 2025-11-26 10:19:57]
+Dremio Refined:  [2025-11-01 00:00:34 to 2025-11-26 07:28:32]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+adjudication_date                              0.00      97.20       NO
+signature_date                                 0.00      97.19       NO
+aedat                                          0.00       5.02       NO
+cost_share_type                                0.00        N/A       NO
+ctr_co                                         0.00        N/A       NO
+ctr_elec_formula                               0.00        N/A       NO
+ctr_flex_type                                  0.00        N/A       NO
+ctr_return_perc                                0.00        N/A       NO
+et_co                                          0.00        N/A       NO
+group_id                                       0.00        N/A       NO
+no_tel_consider                                0.00        N/A       NO
+
+(62 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=36953, Dremio=36845, diff=0.29%
+  - Refresh date range mismatch: SAP=[2025-11-01 00:00:34.598000 to 2025-11-26 10:19:57.385000], Dremio=[2025-11-01 00:00:34 to 2025-11-26 07:28:32]
+  - Null percentage mismatch for adjudication_date: SAP=0.00%, Dremio=97.20%
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=5.02%
+  - Null percentage mismatch for signature_date: SAP=0.00%, Dremio=97.19%
+
+================================================================================

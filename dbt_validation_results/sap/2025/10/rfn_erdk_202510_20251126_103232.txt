@@ -1,0 +1,45 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_erdk
+Period: 2025-10
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      11,846,688
+Dremio Refined:  11,846,689
+Difference:      1 (0.00%)
+Match:           YES
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-10-18 11:58:39 to 2025-10-31 20:30:09]
+Dremio Refined:  [2025-10-18 11:58:39 to 2025-10-31 20:30:09]
+Match:           YES
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+edisenddate                                    0.00     100.00       NO
+taxdate                                        0.00     100.00       NO
+selection_date                                 0.00      99.70       NO
+sto_budat                                      0.00      99.54       NO
+druckdat                                       0.00       1.31       NO
+
+(68 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Null percentage mismatch for druckdat: SAP=0.00%, Dremio=1.31%
+  - Null percentage mismatch for edisenddate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for selection_date: SAP=0.00%, Dremio=99.70%
+  - Null percentage mismatch for sto_budat: SAP=0.00%, Dremio=99.54%
+  - Null percentage mismatch for taxdate: SAP=0.00%, Dremio=100.00%
+
+================================================================================

@@ -1,0 +1,45 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_eideswtdoc
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      416,544
+Dremio Refined:  344,062
+Difference:      72,482 (17.40%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 00:00:10 to 2025-11-26 10:16:07]
+Dremio Refined:  [2025-11-01 00:00:10 to 2025-11-26 09:08:13]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+realmoveoutdate                                0.00      97.15       NO
+moveoutdate                                    0.00      96.24       NO
+realmoveindate                                 0.00      18.43       NO
+moveindate                                     0.00       3.50       NO
+
+(34 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=416544, Dremio=344062, diff=17.40%
+  - Refresh date range mismatch: SAP=[2025-11-01 00:00:10.444000 to 2025-11-26 10:16:07.489000], Dremio=[2025-11-01 00:00:10 to 2025-11-26 09:08:13]
+  - Null percentage mismatch for moveindate: SAP=0.00%, Dremio=3.50%
+  - Null percentage mismatch for moveoutdate: SAP=0.00%, Dremio=96.24%
+  - Null percentage mismatch for realmoveindate: SAP=0.00%, Dremio=18.43%
+  - Null percentage mismatch for realmoveoutdate: SAP=0.00%, Dremio=97.15%
+
+================================================================================

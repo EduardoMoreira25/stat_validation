@@ -1,0 +1,69 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_fkkvkp
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      18,648
+Dremio Refined:  18,595
+Difference:      53 (0.28%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 00:01:09 to 2025-11-26 10:11:51]
+Dremio Refined:  [2025-11-01 00:01:09 to 2025-11-26 07:26:49]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+bpl_fdate                                      0.00     100.00       NO
+bpl_tdate                                      0.00     100.00       NO
+date_from_acc                                  0.00     100.00       NO
+dexbt                                          0.00     100.00       NO
+intto                                          0.00     100.00       NO
+inv_cycle_start                                0.00     100.00       NO
+ipa_begda                                      0.00     100.00       NO
+paabd                                          0.00     100.00       NO
+paind                                          0.00     100.00       NO
+qszdt                                          0.00     100.00       NO
+stopd                                          0.00     100.00       NO
+aedatp                                         0.00       8.88       NO
+_sapce_fkru_ctt                                0.00        N/A       NO
+_sapce_fkru_fis                                0.00        N/A       NO
+_sapce_fkru_ftd                                0.00        N/A       NO
+_sapce_fkru_ftda                               0.00        N/A       NO
+_sapce_iuru_buyer_addr_no                      0.00        N/A       NO
+_sapce_iuru_buyer_partner                      0.00        N/A       NO
+_sapce_iuru_consignee_addr_no                  0.00        N/A       NO
+_sapce_iuru_consignee_partner                  0.00        N/A       NO
+
+(149 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=18648, Dremio=18595, diff=0.28%
+  - Refresh date range mismatch: SAP=[2025-11-01 00:01:09.828000 to 2025-11-26 10:11:51.062000], Dremio=[2025-11-01 00:01:09 to 2025-11-26 07:26:49]
+  - Null percentage mismatch for aedatp: SAP=0.00%, Dremio=8.88%
+  - Null percentage mismatch for bpl_fdate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for bpl_tdate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for date_from_acc: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for dexbt: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for intto: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for inv_cycle_start: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for ipa_begda: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for paabd: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for paind: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for qszdt: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for stopd: SAP=0.00%, Dremio=100.00%
+
+================================================================================

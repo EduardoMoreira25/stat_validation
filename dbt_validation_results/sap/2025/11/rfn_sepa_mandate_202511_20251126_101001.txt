@@ -1,0 +1,59 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_sepa_mandate
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      16,304
+Dremio Refined:  15,237
+Difference:      1,067 (6.54%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 05:17:17 to 2025-11-26 10:17:22]
+Dremio Refined:  [2025-11-01 05:17:17 to 2025-11-26 00:10:20]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+glock_val_from                                 0.00     100.00       NO
+glock_val_to                                   0.00     100.00       NO
+laufd                                          0.00     100.00       NO
+limit_start_date                               0.00     100.00       NO
+val_from_date                                  0.00      52.71       NO
+val_to_date                                    0.00      52.71       NO
+firstuse_date                                  0.00      49.03       NO
+lastuse_date                                   0.00      49.03       NO
+_sapf15_f15_bw                                 0.00        N/A       NO
+_sapf15_f15_kz                                 0.00        N/A       NO
+_sapf15_guid                                   0.00        N/A       NO
+sapf15_f15_bw                                   N/A       0.00       NO
+sapf15_f15_kz                                   N/A       0.00       NO
+sapf15_guid                                     N/A       0.00       NO
+
+(76 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=16304, Dremio=15237, diff=6.54%
+  - Refresh date range mismatch: SAP=[2025-11-01 05:17:17.855000 to 2025-11-26 10:17:22.231000], Dremio=[2025-11-01 05:17:17 to 2025-11-26 00:10:20]
+  - Null percentage mismatch for firstuse_date: SAP=0.00%, Dremio=49.03%
+  - Null percentage mismatch for glock_val_from: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for glock_val_to: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for lastuse_date: SAP=0.00%, Dremio=49.03%
+  - Null percentage mismatch for laufd: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for limit_start_date: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for val_from_date: SAP=0.00%, Dremio=52.71%
+  - Null percentage mismatch for val_to_date: SAP=0.00%, Dremio=52.71%
+
+================================================================================

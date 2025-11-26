@@ -1,0 +1,47 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_dfkkko
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      496,589
+Dremio Refined:  487,217
+Difference:      9,372 (1.89%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 00:30:24 to 2025-11-26 10:13:02]
+Dremio Refined:  [2025-11-01 00:30:24 to 2025-11-26 00:56:28]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+_dataaging                                     0.00     100.00       NO
+fulfilldate                                    0.00     100.00       NO
+vatdate                                        0.00      99.90       NO
+wwert                                          0.00      99.01       NO
+chdate                                         0.00      97.86       NO
+
+(52 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=496589, Dremio=487217, diff=1.89%
+  - Refresh date range mismatch: SAP=[2025-11-01 00:30:24.115000 to 2025-11-26 10:13:02.206000], Dremio=[2025-11-01 00:30:24 to 2025-11-26 00:56:28]
+  - Null percentage mismatch for _dataaging: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for chdate: SAP=0.00%, Dremio=97.86%
+  - Null percentage mismatch for fulfilldate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vatdate: SAP=0.00%, Dremio=99.90%
+  - Null percentage mismatch for wwert: SAP=0.00%, Dremio=99.01%
+
+================================================================================

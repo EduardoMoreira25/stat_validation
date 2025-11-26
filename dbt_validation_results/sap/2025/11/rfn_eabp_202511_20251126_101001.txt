@@ -1,0 +1,53 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_eabp
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      5
+Dremio Refined:  5
+Difference:      0 (0.00%)
+Match:           YES
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-18 01:39:54 to 2025-11-22 01:23:22]
+Dremio Refined:  [2025-11-18 01:39:54 to 2025-11-22 01:23:22]
+Match:           YES
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+abschldat                                      0.00     100.00       NO
+abstopdat                                      0.00     100.00       NO
+anpdat                                         0.00     100.00       NO
+bs_dat                                         0.00     100.00       NO
+intanpdat                                      0.00     100.00       NO
+psactiv                                        0.00     100.00       NO
+pstermdat                                      0.00     100.00       NO
+vorauszdat                                     0.00     100.00       NO
+absperdat                                      0.00      80.00       NO
+
+(54 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Null percentage mismatch for abschldat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for absperdat: SAP=0.00%, Dremio=80.00%
+  - Null percentage mismatch for abstopdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for anpdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for bs_dat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for intanpdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for psactiv: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for pstermdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vorauszdat: SAP=0.00%, Dremio=100.00%
+
+================================================================================

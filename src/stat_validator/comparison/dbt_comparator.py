@@ -76,6 +76,49 @@ class DBTComparator:
         self.sap_connector = sap_connector
         self.dbt_parser = dbt_parser or DBTSQLParser()
         self.row_count_tolerance = row_count_tolerance
+        self._status_column_cache = {}  # Cache for status column names per table
+
+    def _detect_status_column(self, schema: str, table: str) -> str:
+        """
+        Detect which status column exists in the SAP table.
+        Tries EIM_CHANGE_STATUS first, then CHANGE_EIM_STATUS.
+
+        Args:
+            schema: SAP schema name
+            table: SAP table name
+
+        Returns:
+            Name of the status column that exists ('EIM_CHANGE_STATUS' or 'CHANGE_EIM_STATUS')
+        """
+        # Check cache first
+        cache_key = f"{schema}.{table}"
+        if cache_key in self._status_column_cache:
+            return self._status_column_cache[cache_key]
+
+        # Try EIM_CHANGE_STATUS first
+        try:
+            test_query = f'SELECT TOP 1 "EIM_CHANGE_STATUS" FROM "{schema}"."{table}"'
+            self.sap_connector.execute_query(test_query)
+            logger.debug(f"Table {table} uses EIM_CHANGE_STATUS column")
+            self._status_column_cache[cache_key] = 'EIM_CHANGE_STATUS'
+            return 'EIM_CHANGE_STATUS'
+        except Exception:
+            pass
+
+        # Try CHANGE_EIM_STATUS
+        try:
+            test_query = f'SELECT TOP 1 "CHANGE_EIM_STATUS" FROM "{schema}"."{table}"'
+            self.sap_connector.execute_query(test_query)
+            logger.debug(f"Table {table} uses CHANGE_EIM_STATUS column")
+            self._status_column_cache[cache_key] = 'CHANGE_EIM_STATUS'
+            return 'CHANGE_EIM_STATUS'
+        except Exception:
+            pass
+
+        # If neither exists, default to EIM_CHANGE_STATUS (will fail later with clear error)
+        logger.warning(f"Neither EIM_CHANGE_STATUS nor CHANGE_EIM_STATUS found in {table}, defaulting to EIM_CHANGE_STATUS")
+        self._status_column_cache[cache_key] = 'EIM_CHANGE_STATUS'
+        return 'EIM_CHANGE_STATUS'
 
     def compare_table(
         self,
@@ -171,16 +214,19 @@ class DBTComparator:
         month: int
     ) -> str:
         """Build the statistics query for SAP source table with DBT filters."""
-        # Get filter components
-        filters = self.dbt_parser.build_sap_query_filters(parsed_dbt)
+        # Detect which status column exists in this table
+        status_column = self._detect_status_column(schema, table)
+
+        # Get filter components (pass the detected status column)
+        filters = self.dbt_parser.build_sap_query_filters(parsed_dbt, status_column=status_column)
 
         # First, get column list from main table
         column_query = f'SELECT TOP 1 * FROM "{schema}"."{table}"'
         sample = self.sap_connector.execute_query(column_query)
         columns = sample.schema.names
 
-        # Exclude system columns from null analysis
-        exclude_columns = {'SYNC_TS', 'SYSTEM_TS', 'ULYSSES_TS', 'REFRESH_DT', 'EIM_CHANGE_STATUS', 'D_EXTRACT'}
+        # Exclude system columns from null analysis (exclude both possible status columns)
+        exclude_columns = {'SYNC_TS', 'SYSTEM_TS', 'ULYSSES_TS', 'REFRESH_DT', 'EIM_CHANGE_STATUS', 'CHANGE_EIM_STATUS', 'D_EXTRACT'}
         data_columns = [col for col in columns if col not in exclude_columns]
 
         # Build null count expressions for each column (reference main table alias if it exists)
@@ -384,6 +430,155 @@ class DBTComparator:
             overall_status=overall_status,
             issues=issues
         )
+
+    def get_daily_breakdown(
+        self,
+        dremio_schema: str,
+        dremio_table: str,
+        sap_schema: str,
+        sap_table: str,
+        year: int,
+        month: int
+    ) -> Dict[str, Any]:
+        """
+        Get daily breakdown of row counts for both SAP and Dremio tables.
+
+        Args:
+            dremio_schema: Dremio schema (e.g., 'sapisu')
+            dremio_table: Dremio refined table name (e.g., 'rfn_but000')
+            sap_schema: SAP schema (e.g., 'SAP_RISE_1')
+            sap_table: SAP table name (e.g., 'T_RISE_BUT000')
+            year: Year filter
+            month: Month filter
+
+        Returns:
+            Dictionary with 'daily_data' containing merged daily counts
+        """
+        import pandas as pd
+
+        # Parse DBT SQL to get filters for SAP
+        parsed_dbt = self.dbt_parser.parse_file(dremio_table)
+
+        # Build queries
+        dremio_daily_query = self._build_dremio_daily_query(dremio_schema, dremio_table, year, month)
+        sap_daily_query = self._build_sap_daily_query(sap_schema, sap_table, parsed_dbt, year, month)
+
+        logger.debug(f"Dremio daily query: {dremio_daily_query}")
+        logger.debug(f"SAP daily query: {sap_daily_query}")
+
+        # Execute queries
+        try:
+            dremio_result = self.dremio_connector.execute_query(dremio_daily_query)
+            dremio_df = dremio_result.to_pandas()
+        except Exception as e:
+            logger.error(f"Error querying Dremio daily breakdown: {e}")
+            dremio_df = pd.DataFrame(columns=['date', 'dremio_count'])
+
+        try:
+            sap_result = self.sap_connector.execute_query(sap_daily_query)
+            sap_df = sap_result.to_pandas()
+        except Exception as e:
+            logger.error(f"Error querying SAP daily breakdown: {e}")
+            sap_df = pd.DataFrame(columns=['date', 'sap_count'])
+
+        # Merge the dataframes
+        if not dremio_df.empty and not sap_df.empty:
+            # Rename columns for clarity
+            dremio_df.columns = ['date', 'dremio_count']
+            sap_df.columns = ['date', 'sap_count']
+
+            # Convert date columns to datetime for proper sorting
+            dremio_df['date'] = pd.to_datetime(dremio_df['date'])
+            sap_df['date'] = pd.to_datetime(sap_df['date'])
+
+            # Merge on date (outer join to include all dates from both sources)
+            merged_df = pd.merge(sap_df, dremio_df, on='date', how='outer')
+            merged_df = merged_df.fillna(0)  # Fill missing counts with 0
+            merged_df = merged_df.sort_values('date', ascending=False)
+
+            # Convert back to list of dicts for easy JSON serialization
+            daily_data = merged_df.to_dict('records')
+        elif not sap_df.empty:
+            sap_df.columns = ['date', 'sap_count']
+            sap_df['date'] = pd.to_datetime(sap_df['date'])
+            sap_df['dremio_count'] = 0
+            daily_data = sap_df.sort_values('date', ascending=False).to_dict('records')
+        elif not dremio_df.empty:
+            dremio_df.columns = ['date', 'dremio_count']
+            dremio_df['date'] = pd.to_datetime(dremio_df['date'])
+            dremio_df['sap_count'] = 0
+            daily_data = dremio_df.sort_values('date', ascending=False).to_dict('records')
+        else:
+            daily_data = []
+
+        return {
+            'table_name': dremio_table,
+            'year': year,
+            'month': month,
+            'daily_data': daily_data
+        }
+
+    def _build_dremio_daily_query(
+        self,
+        schema: str,
+        table: str,
+        year: int,
+        month: int
+    ) -> str:
+        """Build daily breakdown query for Dremio refined table."""
+        query = f"""
+        SELECT
+            CAST(system_ts AS DATE) as "date",
+            COUNT(*) as row_count
+        FROM ulysses.{schema}."{table}"
+        WHERE EXTRACT(YEAR FROM system_ts) = {year}
+          AND EXTRACT(MONTH FROM system_ts) = {month}
+        GROUP BY CAST(system_ts AS DATE)
+        ORDER BY "date" DESC
+        """
+        return query
+
+    def _build_sap_daily_query(
+        self,
+        schema: str,
+        table: str,
+        parsed_dbt: ParsedDBTSQL,
+        year: int,
+        month: int
+    ) -> str:
+        """Build daily breakdown query for SAP source table with DBT filters."""
+        # Detect which status column exists in this table
+        status_column = self._detect_status_column(schema, table)
+
+        # Get filter components (pass the detected status column)
+        filters = self.dbt_parser.build_sap_query_filters(parsed_dbt, status_column=status_column)
+
+        # Reference main table alias if it exists
+        main_alias = parsed_dbt.main_alias
+        col_prefix = f"{main_alias}." if main_alias else ""
+
+        # Build the query
+        query = f"""
+        SELECT
+            TO_DATE({col_prefix}REFRESH_DT) as date,
+            COUNT(*) as row_count
+        {filters['from_clause']}
+        """
+
+        # Add JOIN clause if exists
+        if filters['join_clause']:
+            query += f"\n{filters['join_clause']}"
+
+        # Add WHERE clause (includes EIM_CHANGE_STATUS filter + DBT filters + date filter)
+        query += f"""
+        WHERE {filters['where_clause']}
+          AND YEAR({col_prefix}REFRESH_DT) = {year}
+          AND MONTH({col_prefix}REFRESH_DT) = {month}
+        GROUP BY TO_DATE({col_prefix}REFRESH_DT)
+        ORDER BY date DESC
+        """
+
+        return query
 
     def to_dict(self, result: ComparisonResult) -> Dict[str, Any]:
         """Convert ComparisonResult to dictionary for JSON serialization."""

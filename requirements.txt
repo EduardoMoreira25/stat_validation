@@ -17,6 +17,7 @@ rich>=13.0.0  # For beautiful CLI output
 
 # Reporting
 jinja2>=3.1.0  # For HTML report templates
+openpyxl>=3.1.0  # For Excel export
 
 # Alerting (optional)
 requests>=2.31.0  # For Slack webhooks

@@ -1,0 +1,59 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_erch
+Period: 2025-10
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      19,917,625
+Dremio Refined:  19,917,640
+Difference:      15 (0.00%)
+Match:           YES
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-10-18 12:23:19 to 2025-10-31 20:29:22]
+Dremio Refined:  [2025-10-18 12:23:19 to 2025-10-31 20:29:22]
+Match:           YES
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+begend                                         0.00     100.00       NO
+begnach                                        0.00     100.00       NO
+zdue_date                                      0.00     100.00       NO
+abrdatsu                                       0.00      99.99       NO
+mem_budat                                      0.00      99.90       NO
+correction_date                                0.00      98.84       NO
+stornodat                                      0.00      98.84       NO
+zuorddaa                                       0.00      87.12       NO
+ptermtdat                                      0.00       9.13       NO
+aedat                                          0.00       6.75       NO
+adatsoll                                       0.00       4.03       NO
+abrdats                                        0.00       3.67       NO
+
+(90 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Null percentage mismatch for abrdats: SAP=0.00%, Dremio=3.67%
+  - Null percentage mismatch for abrdatsu: SAP=0.00%, Dremio=99.99%
+  - Null percentage mismatch for adatsoll: SAP=0.00%, Dremio=4.03%
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=6.75%
+  - Null percentage mismatch for begend: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for begnach: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for correction_date: SAP=0.00%, Dremio=98.84%
+  - Null percentage mismatch for mem_budat: SAP=0.00%, Dremio=99.90%
+  - Null percentage mismatch for ptermtdat: SAP=0.00%, Dremio=9.13%
+  - Null percentage mismatch for stornodat: SAP=0.00%, Dremio=98.84%
+  - Null percentage mismatch for zdue_date: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for zuorddaa: SAP=0.00%, Dremio=87.12%
+
+================================================================================

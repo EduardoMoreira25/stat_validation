@@ -1,0 +1,63 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_aufk
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      2,340
+Dremio Refined:  2,310
+Difference:      30 (1.28%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 02:58:04 to 2025-11-26 10:09:28]
+Dremio Refined:  [2025-11-01 02:58:04 to 2025-11-26 01:38:15]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+idat3                                          0.00     100.00       NO
+pdat1                                          0.00     100.00       NO
+pdat2                                          0.00     100.00       NO
+pdat3                                          0.00     100.00       NO
+sdate                                          0.00     100.00       NO
+stdat                                          0.00     100.00       NO
+user5                                          0.00     100.00       NO
+user7                                          0.00     100.00       NO
+user8                                          0.00     100.00       NO
+idat1                                          0.00      69.70       NO
+idat2                                          0.00      30.30       NO
+aedat                                          0.00      18.31       NO
+cpd_updat                                      0.00       3.12       NO
+
+(104 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=2340, Dremio=2310, diff=1.28%
+  - Refresh date range mismatch: SAP=[2025-11-01 02:58:04.947000 to 2025-11-26 10:09:28.640000], Dremio=[2025-11-01 02:58:04 to 2025-11-26 01:38:15]
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=18.31%
+  - Null percentage mismatch for cpd_updat: SAP=0.00%, Dremio=3.12%
+  - Null percentage mismatch for idat1: SAP=0.00%, Dremio=69.70%
+  - Null percentage mismatch for idat2: SAP=0.00%, Dremio=30.30%
+  - Null percentage mismatch for idat3: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for pdat1: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for pdat2: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for pdat3: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for sdate: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for stdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for user5: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for user7: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for user8: SAP=0.00%, Dremio=100.00%
+
+================================================================================

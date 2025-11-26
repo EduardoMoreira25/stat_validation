@@ -1,0 +1,65 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_ever
+Period: 2025-10
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      735,823
+Dremio Refined:  735,882
+Difference:      59 (0.01%)
+Match:           YES
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-10-18 11:25:24 to 2025-10-31 23:13:49]
+Dremio Refined:  [2025-10-18 11:25:24 to 2025-10-31 23:13:49]
+Match:           YES
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+kuenddat                                       0.00     100.00       NO
+ps_startdat                                    0.00     100.00       NO
+vabschlevu                                     0.00     100.00       NO
+vabschlknd                                     0.00     100.00       NO
+vbeginn                                        0.00     100.00       NO
+vbisdat                                        0.00     100.00       NO
+vende                                          0.00     100.00       NO
+absstopdat                                     0.00      67.49       NO
+aedat                                          0.00      63.30       NO
+einzdat_alt                                    0.00       1.68       NO
+_sapce_bbwk                                    0.00        N/A       NO
+_sapce_bilper_ap                               0.00        N/A       NO
+_sapce_dueday                                  0.00        N/A       NO
+_sapce_dueday1                                 0.00        N/A       NO
+_sapce_dueday2                                 0.00        N/A       NO
+_sapce_dueday3                                 0.00        N/A       NO
+_sapce_dueday4                                 0.00        N/A       NO
+_sapce_dueday5                                 0.00        N/A       NO
+_sapce_fix                                     0.00        N/A       NO
+_sapce_fkru_cot                                0.00        N/A       NO
+
+(90 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Null percentage mismatch for absstopdat: SAP=0.00%, Dremio=67.49%
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=63.30%
+  - Null percentage mismatch for einzdat_alt: SAP=0.00%, Dremio=1.68%
+  - Null percentage mismatch for kuenddat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for ps_startdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vabschlevu: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vabschlknd: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vbeginn: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vbisdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for vende: SAP=0.00%, Dremio=100.00%
+
+================================================================================

@@ -1,0 +1,53 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_eabl
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      25,746,091
+Dremio Refined:  24,432,193
+Difference:      1,313,898 (5.10%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 00:00:09 to 2025-11-26 10:15:23]
+Dremio Refined:  [2025-11-01 00:00:09 to 2025-11-26 04:15:22]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+adaterz                                        0.00     100.00       NO
+adatmax                                        0.00     100.00       NO
+adatprog                                       0.00     100.00       NO
+adatreal                                       0.00     100.00       NO
+s_adatsoll                                     0.00     100.00       NO
+s_zvbl_bezdat                                  0.00     100.00       NO
+thgdatum                                       0.00      98.77       NO
+aedat                                          0.00      93.04       NO
+
+(76 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=25746091, Dremio=24432193, diff=5.10%
+  - Refresh date range mismatch: SAP=[2025-11-01 00:00:09.748000 to 2025-11-26 10:15:23.255000], Dremio=[2025-11-01 00:00:09 to 2025-11-26 04:15:22]
+  - Null percentage mismatch for adaterz: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for adatmax: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for adatprog: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for adatreal: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for aedat: SAP=0.00%, Dremio=93.04%
+  - Null percentage mismatch for s_adatsoll: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for s_zvbl_bezdat: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for thgdatum: SAP=0.00%, Dremio=98.77%
+
+================================================================================

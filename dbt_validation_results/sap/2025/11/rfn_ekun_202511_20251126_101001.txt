@@ -1,0 +1,62 @@
+================================================================================
+DBT MONTHLY VALIDATION REPORT
+================================================================================
+Table: rfn_ekun
+Period: 2025-11
+Status: FAIL
+
+--------------------------------------------------------------------------------
+ROW COUNT COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      33,367
+Dremio Refined:  33,197
+Difference:      170 (0.51%)
+Match:           NO
+
+--------------------------------------------------------------------------------
+REFRESH DATE RANGE COMPARISON
+--------------------------------------------------------------------------------
+SAP Source:      [2025-11-01 00:03:07 to 2025-11-26 10:16:11]
+Dremio Refined:  [2025-11-01 00:03:07 to 2025-11-26 02:32:21]
+Match:           NO
+
+--------------------------------------------------------------------------------
+NULL PERCENTAGE COMPARISON (Top 20 Mismatches)
+--------------------------------------------------------------------------------
+Column                                        SAP %   Dremio %    Match
+--------------------------------------------------------------------------------
+endezul                                        0.00     100.00       NO
+erstzul                                        0.00     100.00       NO
+sapce_fkru_blof                                 N/A     100.00       NO
+sapce_fkru_blot                                 N/A     100.00       NO
+statdatum                                      0.00     100.00       NO
+verlzul                                        0.00     100.00       NO
+werkstatt                                      0.00     100.00       NO
+_sapce_fkru_blo                                0.00        N/A       NO
+_sapce_fkru_blof                               0.00        N/A       NO
+_sapce_fkru_blot                               0.00        N/A       NO
+_sapce_fkru_cot                                0.00        N/A       NO
+_sapce_fkru_ind                                0.00        N/A       NO
+_sapce_fkru_min                                0.00        N/A       NO
+_sapce_fkua_ris                                0.00        N/A       NO
+_sapce_fkua_rsd                                0.00        N/A       NO
+_sapce_fkua_tad                                0.00        N/A       NO
+_sapce_fkua_tadt                               0.00        N/A       NO
+sapce_fkru_blo                                  N/A       0.00       NO
+sapce_fkru_cot                                  N/A       0.00       NO
+sapce_fkru_ind                                  N/A       0.00       NO
+
+(45 columns with matching null percentages)
+
+--------------------------------------------------------------------------------
+VALIDATION ISSUES
+--------------------------------------------------------------------------------
+  - Row count mismatch: SAP=33367, Dremio=33197, diff=0.51%
+  - Refresh date range mismatch: SAP=[2025-11-01 00:03:07.217000 to 2025-11-26 10:16:11.358000], Dremio=[2025-11-01 00:03:07 to 2025-11-26 02:32:21]
+  - Null percentage mismatch for endezul: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for erstzul: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for statdatum: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for verlzul: SAP=0.00%, Dremio=100.00%
+  - Null percentage mismatch for werkstatt: SAP=0.00%, Dremio=100.00%
+
+================================================================================

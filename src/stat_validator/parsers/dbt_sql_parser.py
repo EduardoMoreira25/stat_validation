@@ -75,6 +75,9 @@ class DBTSQLParser:
         # Remove the config block at the beginning
         sql_content = self._remove_config_block(raw_sql)
 
+        # Remove SQL comments to avoid parsing issues
+        sql_content = self._remove_sql_comments(sql_content)
+
         # Extract FROM clause with main table
         main_table, main_alias = self._extract_main_table(sql_content)
 
@@ -97,6 +100,24 @@ class DBTSQLParser:
         # Remove config block (everything from first {{ config to matching }})
         config_pattern = re.compile(r'{{\s*config\s*\([^}]*\)\s*}}', re.DOTALL | re.IGNORECASE)
         return config_pattern.sub('', sql)
+
+    def _remove_sql_comments(self, sql: str) -> str:
+        """Remove SQL line comments (--) from the SQL."""
+        # Remove lines that start with -- (with optional leading whitespace)
+        # Also remove inline comments (everything after -- on a line)
+        lines = []
+        for line in sql.split('\n'):
+            # Find the position of -- in the line
+            comment_pos = line.find('--')
+            if comment_pos != -1:
+                # Keep only the part before the comment
+                line = line[:comment_pos]
+            # Only add non-empty lines or lines with content
+            if line.strip():
+                lines.append(line)
+            else:
+                lines.append('')  # Preserve empty lines for line numbers
+        return '\n'.join(lines)
 
     def _convert_source_to_sap_table(self, source_ref: str) -> str:
         """
@@ -229,12 +250,13 @@ class DBTSQLParser:
 
         return where_clause if where_clause else None
 
-    def build_sap_query_filters(self, parsed: ParsedDBTSQL) -> Dict[str, str]:
+    def build_sap_query_filters(self, parsed: ParsedDBTSQL, status_column: str = 'EIM_CHANGE_STATUS') -> Dict[str, str]:
         """
         Build the filter components for a SAP query.
 
         Args:
             parsed: ParsedDBTSQL object
+            status_column: Name of the status column to filter on (default: 'EIM_CHANGE_STATUS')
 
         Returns:
             Dictionary with 'from_clause', 'join_clause', 'where_clause'
@@ -256,12 +278,12 @@ class DBTSQLParser:
                 )
             join_clause = "\n".join(join_parts)
 
-        # Build WHERE clause (always include EIM_CHANGE_STATUS filter)
+        # Build WHERE clause (always include status column filter)
         # Use alias prefix only if alias exists
         if parsed.main_alias:
-            eim_filter = f'{parsed.main_alias}.EIM_CHANGE_STATUS NOT IN (\'D\', \'X\')'
+            eim_filter = f'{parsed.main_alias}.{status_column} NOT IN (\'D\', \'X\')'
         else:
-            eim_filter = 'EIM_CHANGE_STATUS NOT IN (\'D\', \'X\')'
+            eim_filter = f'{status_column} NOT IN (\'D\', \'X\')'
 
         where_parts = [eim_filter]
 
